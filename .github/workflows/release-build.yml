@@ -193,12 +193,15 @@ jobs:
 
       - name: Build (airbus-seclab hardened flags)
         run: |
+          CF_SHELL=$(echo "${{ matrix.cflags }}" | tr '\n' ' ')
+          LD_SHELL=$(echo "${{ matrix.ldflags }}" | tr '\n' ' ')
+          AR_SHELL="${{ matrix.arch }}"
           make clean
           make -j"$(nproc)" allmulti \
             VLMCSD_VERSION="${{ inputs.version }}" \
             CC="${{ matrix.cc }}" \
-            CFLAGS="${{ matrix.cflags }} ${{ matrix.arch }}" \
-            LDFLAGS="${{ matrix.ldflags }} ${{ matrix.arch }}"
+            CFLAGS="$CF_SHELL $AR_SHELL" \
+            LDFLAGS="$LD_SHELL $AR_SHELL"
 
       - name: Verify binary hardening
         run: |
