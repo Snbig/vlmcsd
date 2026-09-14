@@ -47,7 +47,7 @@ jobs:
       - name: Detect fuzzer compiler
         id: aflcc
         run: |
-          if command -v afl-clang-fast >/dev/null; then echo "cc=afl-clang-fast"; else echo "cc=afl-gcc"; fi > "$GITHUB_ENV"
+          if command -v afl-clang-fast >/dev/null; then echo "CC=afl-clang-fast"; else echo "CC=afl-gcc"; fi >> "$GITHUB_ENV"
 
       - name: Build seed generator
         run: |
