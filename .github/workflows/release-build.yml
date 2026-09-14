@@ -297,8 +297,8 @@ jobs:
       - name: Assemble and checksum
         run: |
           mkdir -p release
-          find assets -type f -name 'vlmcsd*' -exec cp {} release/ \;
-          (cd release && sha256sum *) > SHA256SUMS.txt
+          find assets -type f -name 'vlmcs*' -exec cp {} release/ \;
+          sha256sum release/* > SHA256SUMS.txt
           sha256sum -c SHA256SUMS.txt
           ls -la release SHA256SUMS.txt
 
