@@ -1,0 +1,298 @@
+name: release-build
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Release version (no v prefix), e.g. 6.0.0'
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: build-${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: linux-x86_64
+            os: ubuntu-latest
+            cc: gcc
+            pkgs: binutils
+            ext: ''
+            arch: ''
+            cflags: >
+              -O2 -Werror -Wall -Wextra -Wformat=2 -Wformat-security
+              -Wnull-dereference -Walloca -Wvla -Warray-bounds=2
+              -Wshift-overflow=2 -Wstringop-overflow=4 -Wlogical-op
+              -Wduplicated-cond -Wshadow -Wstrict-prototypes -Wswitch-default
+              -Wswitch-enum -Wno-format-signedness -Wno-error=alloca
+              -Wno-error=format-nonliteral -Wno-error=implicit-fallthrough
+              -Wno-error=cast-function-type -Wno-error=stack-protector
+              -Wno-error=dangling-pointer -Wno-error=stringop-truncation
+              -Wno-error=unused-parameter -Wno-error=array-bounds
+              -Wno-conversion -Wno-arith-conversion -Wno-sign-conversion
+              -Wno-cast-align -Wno-cast-qual -Wno-overflow -Wno-undef
+              -Wno-pedantic -D_FORTIFY_SOURCE=3 -fstack-protector-strong
+              -fstack-clash-protection -fPIE -fno-lto
+              -fsanitize=bounds -fsanitize-undefined-trap-on-error
+            ldflags: >
+              -fno-lto -fPIE -Wl,-z,relro -Wl,-z,now -Wl,-z,noexecstack
+              -Wl,-z,separate-code
+          - name: linux-i686
+            os: ubuntu-latest
+            cc: i686-linux-gnu-gcc
+            pkgs: gcc-i686-linux-gnu libc6-dev-i386-cross binutils
+            ext: ''
+            arch: ''
+            cflags: >
+              -O2 -Werror -Wall -Wextra -Wformat=2 -Wformat-security
+              -Wnull-dereference -Walloca -Wvla -Warray-bounds=2
+              -Wshift-overflow=2 -Wstringop-overflow=4 -Wlogical-op
+              -Wduplicated-cond -Wshadow -Wstrict-prototypes -Wswitch-default
+              -Wswitch-enum -Wno-format-signedness -Wno-error=alloca
+              -Wno-error=format-nonliteral -Wno-error=implicit-fallthrough
+              -Wno-error=cast-function-type -Wno-error=stack-protector
+              -Wno-error=dangling-pointer -Wno-error=stringop-truncation
+              -Wno-error=unused-parameter -Wno-error=array-bounds
+              -Wno-conversion -Wno-arith-conversion -Wno-sign-conversion
+              -Wno-cast-align -Wno-cast-qual -Wno-overflow -Wno-undef
+              -Wno-pedantic -D_FORTIFY_SOURCE=3 -fstack-protector-strong
+              -fstack-clash-protection -fPIE -fno-lto
+              -fsanitize=bounds -fsanitize-undefined-trap-on-error
+            ldflags: >
+              -fno-lto -fPIE -Wl,-z,relro -Wl,-z,now -Wl,-z,noexecstack
+              -Wl,-z,separate-code
+          - name: linux-armv8-aarch64
+            os: ubuntu-latest
+            cc: aarch64-linux-gnu-gcc
+            pkgs: gcc-aarch64-linux-gnu libc6-dev-arm64-cross binutils
+            ext: ''
+            arch: ''
+            cflags: >
+              -O2 -Werror -Wall -Wextra -Wformat=2 -Wformat-security
+              -Wnull-dereference -Walloca -Wvla -Warray-bounds=2
+              -Wshift-overflow=2 -Wstringop-overflow=4 -Wlogical-op
+              -Wduplicated-cond -Wshadow -Wstrict-prototypes -Wswitch-default
+              -Wswitch-enum -Wno-format-signedness -Wno-error=alloca
+              -Wno-error=format-nonliteral -Wno-error=implicit-fallthrough
+              -Wno-error=cast-function-type -Wno-error=stack-protector
+              -Wno-error=dangling-pointer -Wno-error=stringop-truncation
+              -Wno-error=unused-parameter -Wno-error=array-bounds
+              -Wno-conversion -Wno-arith-conversion -Wno-sign-conversion
+              -Wno-cast-align -Wno-cast-qual -Wno-overflow -Wno-undef
+              -Wno-pedantic -D_FORTIFY_SOURCE=3 -fstack-protector-strong
+              -fstack-clash-protection -fPIE -fno-lto
+              -fsanitize=bounds -fsanitize-undefined-trap-on-error
+            ldflags: >
+              -fno-lto -fPIE -Wl,-z,relro -Wl,-z,now -Wl,-z,noexecstack
+              -Wl,-z,separate-code
+          - name: linux-armv7-armhf
+            os: ubuntu-latest
+            cc: arm-linux-gnueabihf-gcc
+            pkgs: gcc-arm-linux-gnueabihf libc6-dev-armhf-cross binutils
+            ext: ''
+            arch: ''
+            cflags: >
+              -O2 -Werror -Wall -Wextra -Wformat=2 -Wformat-security
+              -Wnull-dereference -Walloca -Wvla -Warray-bounds=2
+              -Wshift-overflow=2 -Wstringop-overflow=4 -Wlogical-op
+              -Wduplicated-cond -Wshadow -Wstrict-prototypes -Wswitch-default
+              -Wswitch-enum -Wno-format-signedness -Wno-error=alloca
+              -Wno-error=format-nonliteral -Wno-error=implicit-fallthrough
+              -Wno-error=cast-function-type -Wno-error=stack-protector
+              -Wno-error=dangling-pointer -Wno-error=stringop-truncation
+              -Wno-error=unused-parameter -Wno-error=array-bounds
+              -Wno-conversion -Wno-arith-conversion -Wno-sign-conversion
+              -Wno-cast-align -Wno-cast-qual -Wno-overflow -Wno-undef
+              -Wno-pedantic -D_FORTIFY_SOURCE=3 -fstack-protector-strong
+              -fstack-clash-protection -fPIE -fno-lto
+              -fsanitize=bounds -fsanitize-undefined-trap-on-error
+            ldflags: >
+              -fno-lto -fPIE -Wl,-z,relro -Wl,-z,now -Wl,-z,noexecstack
+              -Wl,-z,separate-code
+          - name: windows-x86_64
+            os: ubuntu-latest
+            cc: x86_64-w64-mingw32-gcc
+            pkgs: gcc-mingw-w64-x86-64 binutils
+            ext: .exe
+            arch: ''
+            cflags: >
+              -O2 -Werror -Wall -Wextra -Wno-format
+              -Wnull-dereference -Walloca -Wvla -Wstringop-overflow=4
+              -Wlogical-op -Wduplicated-cond -Wshadow -Wstrict-prototypes
+              -Wswitch-default -Wswitch-enum -Wno-format-signedness
+              -Wno-error=alloca -Wno-error=format-nonliteral
+              -Wno-error=implicit-fallthrough -Wno-error=cast-function-type
+              -Wno-error=stack-protector -Wno-error=dangling-pointer
+              -Wno-error=stringop-truncation -Wno-error=stringop-overflow
+              -Wno-error=null-dereference -Wno-error=unused-parameter
+              -Wno-error=array-bounds -Wno-conversion -Wno-arith-conversion
+              -Wno-sign-conversion -Wno-cast-align -Wno-cast-qual
+              -Wno-overflow -Wno-undef -Wno-pedantic -D_FORTIFY_SOURCE=2
+              -fstack-protector-strong -fstack-clash-protection -fPIE
+            ldflags: >
+              -Wl,--dynamicbase -Wl,--nxcompat -Wl,--high-entropy-va
+          - name: windows-x86
+            os: ubuntu-latest
+            cc: i686-w64-mingw32-gcc
+            pkgs: gcc-mingw-w64-i686 binutils
+            ext: .exe
+            arch: ''
+            cflags: >
+              -O2 -Werror -Wall -Wextra -Wno-format
+              -Wnull-dereference -Walloca -Wvla -Wstringop-overflow=4
+              -Wlogical-op -Wduplicated-cond -Wshadow -Wstrict-prototypes
+              -Wswitch-default -Wswitch-enum -Wno-format-signedness
+              -Wno-error=alloca -Wno-error=format-nonliteral
+              -Wno-error=implicit-fallthrough -Wno-error=cast-function-type
+              -Wno-error=stack-protector -Wno-error=dangling-pointer
+              -Wno-error=stringop-truncation -Wno-error=stringop-overflow
+              -Wno-error=null-dereference -Wno-error=unused-parameter
+              -Wno-error=array-bounds -Wno-conversion -Wno-arith-conversion
+              -Wno-sign-conversion -Wno-cast-align -Wno-cast-qual
+              -Wno-overflow -Wno-undef -Wno-pedantic -D_FORTIFY_SOURCE=2
+              -fstack-protector-strong -fstack-clash-protection -fPIE
+            ldflags: >
+              -Wl,--dynamicbase -Wl,--nxcompat
+          - name: macos-universal
+            os: macos-latest
+            cc: clang
+            pkgs: ''
+            ext: ''
+            arch: -arch arm64 -arch x86_64
+            cflags: >
+              -O2 -Werror -Wall -Wextra -Wformat=2 -Wformat-security
+              -Wnull-dereference -Walloca -Wvla -Warray-bounds
+              -Wimplicit-fallthrough -Wswitch-enum -Wno-format-signedness
+              -Wno-error=alloca -Wno-error=format-nonliteral
+              -Wno-error=implicit-fallthrough -Wno-error=cast-function-type-mismatch
+              -Wno-error=unknown-warning-option -Wno-unused-parameter
+              -Wno-conversion -Wno-sign-conversion -Wno-cast-qual
+              -D_FORTIFY_SOURCE=2 -fstack-protector-strong
+              -fstack-clash-protection -fPIE
+            ldflags: -fPIE -Wl,-pie
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install cross toolchain
+        if: matrix.pkgs != ''
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq ${{ matrix.pkgs }}
+
+      - name: Build (airbus-seclab hardened flags)
+        run: |
+          make clean
+          make -j"$(nproc)" allmulti \
+            VLMCSD_VERSION="${{ inputs.version }}" \
+            CC="${{ matrix.cc }}" \
+            CFLAGS="${{ matrix.cflags }} ${{ matrix.arch }}" \
+            LDFLAGS="${{ matrix.ldflags }} ${{ matrix.arch }}"
+
+      - name: Verify binary hardening
+        run: |
+          set -e
+          for f in bin/vlmcsd${{ matrix.ext }} bin/vlmcs${{ matrix.ext }}; do
+            python3 - "$f" <<'PY'
+          import subprocess, sys
+          f = sys.argv[1]
+          if f.endswith('.exe'):
+              out = subprocess.run(['objdump', '-x', f], capture_output=True, text=True).stdout.lower()
+              ok = ('dynamic base' in out and 'nx compatible' in out and
+                    'high entropy' in out)
+              print(f'{f}: PE  DEP+ASLR+HIGH-ENTROPY = {ok}')
+          elif sys.platform == 'darwin':
+              out = subprocess.run(['otool', '-hv', f], capture_output=True, text=True).stdout
+              flags = 0
+              for line in out.splitlines():
+                  t = line.split()
+                  if t and t[0].lower().startswith('0xfeedfacf'):
+                      try: flags = int(t[-1], 16); break
+                      except ValueError: pass
+              ok = bool(flags & 0x200000)
+              print(f'{f}: Mach-O PIE = {ok}')
+          else:
+              h = subprocess.run(['readelf', '-hW', f], capture_output=True, text=True).stdout
+              l = subprocess.run(['readelf', '-lW', f], capture_output=True, text=True).stdout
+              d = subprocess.run(['readelf', '-dW', f], capture_output=True, text=True).stdout
+              pie = 'Type: DYN' in h
+              relro = 'GNU_RELRO' in l
+              now = 'BIND_NOW' in d
+              nx = True
+              for line in l.splitlines():
+                  if 'GNU_STACK' in line:
+                      s = line.split()
+                      nx = len(s) < 7 or 'X' not in s[6]
+              ok = all((pie, relro, now, nx))
+              print(f'{f}: PIE={pie} RELRO={relro} BIND_NOW={now} NX={nx}')
+          if not ok:
+              sys.exit(1)
+          PY
+          done
+
+      - name: Stage artifacts
+        run: |
+          mkdir -p release-assets
+          cp bin/vlmcsd${{ matrix.ext }} release-assets/vlmcsd-${{ matrix.name }}${{ matrix.ext }}
+          cp bin/vlmcs${{ matrix.ext }} release-assets/vlmcs-${{ matrix.name }}${{ matrix.ext }}
+          cp bin/vlmcsdmulti${{ matrix.ext }} release-assets/vlmcsdmulti-${{ matrix.name }}${{ matrix.ext }}
+          ls -la release-assets
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: vlmcsd-${{ matrix.name }}
+          path: release-assets
+          if-no-files-found: error
+
+  release:
+    name: create-release
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download all binaries
+        uses: actions/download-artifact@v4
+        with:
+          path: assets
+          pattern: vlmcsd-*
+          merge-multiple: true
+
+      - name: Assemble and checksum
+        run: |
+          mkdir -p release
+          find assets -type f -name 'vlmcsd*' -exec cp {} release/ \;
+          (cd release && sha256sum *) > SHA256SUMS.txt
+          sha256sum -c SHA256SUMS.txt
+          ls -la release SHA256SUMS.txt
+
+      - name: Create GitHub Release and upload
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -e
+          TAG="v${{ inputs.version }}"
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "Release $TAG already exists; updating assets..."
+            gh release upload "$TAG" --repo "$GITHUB_REPOSITORY" --clobber release/* SHA256SUMS.txt
+          else
+            gh release create "$TAG" \
+              --repo "$GITHUB_REPOSITORY" \
+              --target "$GITHUB_SHA" \
+              --title "vlmcsd ${{ inputs.version }}" \
+              --notes "Hardened release build (Airbus-seclab compiler security guide) for Linux, Windows and macOS." \
+              release/* SHA256SUMS.txt
+          fi
