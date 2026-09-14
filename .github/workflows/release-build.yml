@@ -218,22 +218,26 @@ jobs:
                     (not heva or 'high entropy' in out))
               print(f'{f}: PE  DEP+ASLR+HIGH-ENTROPY = {ok}')
           elif sys.platform == 'darwin':
-              # Universal (fat) binaries must be thinned per architecture before
-              # otool can show the Mach header flags dword (MH_PIE = 0x200000).
+              # Universal (fat) binaries must be thinned before otool shows the
+              # Mach header flags dword (MH_PIE = 0x200000).
               ok = False
               for arch in ('arm64', 'x86_64'):
                   tmp = f + '.' + arch
-                  r = subprocess.run(['lipo', '-thin', arch, f, '-output', tmp],
+                  r = subprocess.run(['lipo', '-thin', arch, '-output', tmp, f],
                                      capture_output=True, text=True)
                   if r.returncode != 0:
+                      print(f'  lipo -thin {arch} failed: {r.stderr.strip()}')
                       continue
                   out = subprocess.run(['otool', '-hv', tmp], capture_output=True, text=True).stdout
                   subprocess.run(['rm', '-f', tmp])
+                  print(f'  otool -hv (thin {arch}):')
+                  print(out)
                   for line in out.splitlines():
                       t = line.split()
                       if t and t[0].lower() in ('0xfeedfacf', '0xfeedface'):
                           try: flags = int(t[-1], 16)
                           except ValueError: continue
+                          print(f'  flags=0x{flags:x}')
                           if flags & 0x200000:
                               ok = True
                           break
