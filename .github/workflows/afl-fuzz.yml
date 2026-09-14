@@ -79,7 +79,17 @@ jobs:
           for src in $SRCS; do $CC $CFLAGS $SAN -c ../src/$src -o obj-$src.o || exit 1; done
           $CC $CFLAGS $SAN -c afl-harness.c -o afl-harness.o || exit 1
           $CC $SAN obj-*.o afl-harness.o -o harness-$MODE || exit 1
-          file harness-$MODE
+
+          # The AFL++ clang build traps on UBSAN reports without printing a
+          # trace to stderr, so crashes of that class cannot be symbolized
+          # from the instrumented binary alone. Rebuild the same harness with
+          # gcc: its ASAN/UBSAN runtime prints symbolizable reports that the
+          # crash-to-SARIF converter parses.
+          rm -f obj-*.o
+          for src in $SRCS; do gcc $CFLAGS $SAN -c ../src/$src -o obj-$src.o || exit 1; done
+          gcc $CFLAGS $SAN -c afl-harness.c -o afl-harness.o || exit 1
+          gcc $SAN obj-*.o afl-harness.o -o replay-$MODE || exit 1
+          file harness-$MODE replay-$MODE
         working-directory: fuzzing
 
       - name: Smoke test
@@ -116,7 +126,7 @@ jobs:
         if: always()
         run: |
           python3 crashes-to-sarif.py \
-            --harness ./harness-$MODE \
+            --harness ./replay-$MODE \
             --mode "$MODE" \
             --crashes out/default/crashes \
             --output ../afl-results-$MODE.sarif

@@ -23,6 +23,10 @@ RAW_FRAME_RE = re.compile(r'#(\d+) +0x[0-9a-f]+ +\(([^)]+)\+0x([0-9a-f]+)\)')
 #   ==12345==ERROR: AddressSanitizer: global-buffer-overflow on ...
 ASAN_ERR_RE = re.compile(r'ERROR: (AddressSanitizer: \S+|LeakSanitizer: \S+)')
 
+# Matches the UBSAN report header emitted by gcc:
+#   /path/to/crypto.c:48:16: runtime error: load of misaligned address ...
+UBSAN_ERR_RE = re.compile(r'runtime error: (load of misaligned address|index \d+ out of bounds|member access within misaligned address|left shift of negative value|division by zero|signed integer overflow|unsigned integer overflow)')
+
 
 def parse_asan(stderr_text, harness=None):
     """Return (error_kind, [(func, file, line), ...]) from an ASAN report."""
@@ -30,6 +34,10 @@ def parse_asan(stderr_text, harness=None):
     m = ASAN_ERR_RE.search(stderr_text)
     if m:
         kind = m.group(1)
+    else:
+        m = UBSAN_ERR_RE.search(stderr_text)
+        if m:
+            kind = "UBSAN: " + m.group(1)
 
     # Pick frames whose file path is inside the project source tree. Paths are
     # relative to the build directory (fuzzing/), e.g. "../src/kms.c", while
@@ -176,6 +184,7 @@ def run_harness(harness, mode, crash_file, timeout=5, attempts=3):
     """
     env = os.environ.copy()
     env["ASAN_OPTIONS"] = "symbolize=1:print_stacktrace=1"
+    env["UBSAN_OPTIONS"] = "print_stacktrace=1:halt_on_error=1"
     for _ in range(attempts):
         try:
             result = subprocess.run(
@@ -185,7 +194,9 @@ def run_harness(harness, mode, crash_file, timeout=5, attempts=3):
                 env=env,
             )
             stderr = result.stderr.decode(errors="replace")
-            if result.returncode != 0 and "AddressSanitizer" in stderr:
+            if result.returncode != 0 and (
+                "AddressSanitizer" in stderr or "runtime error:" in stderr
+            ):
                 return stderr
         except subprocess.TimeoutExpired:
             return ""
