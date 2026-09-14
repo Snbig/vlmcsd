@@ -345,9 +345,23 @@ void randomNumberInit()
 #	if _MSC_VER
 	srand(GetTickCount());
 #	else
-	struct timeval tv;
-	gettimeofday(&tv, NULL);
-	srand((unsigned int)(tv.tv_sec ^ tv.tv_usec));
+	unsigned int seed = 0;
+	FILE* const urand = fopen("/dev/urandom", "rb");
+
+	if (urand)
+	{
+		if (fread(&seed, sizeof(seed), 1, urand) != 1) seed = 0;
+		fclose(urand);
+	}
+
+	if (!seed)
+	{
+		struct timeval tv;
+		gettimeofday(&tv, NULL);
+		seed = (unsigned int)(tv.tv_sec ^ tv.tv_usec);
+	}
+
+	srand(seed);
 #	endif
 }
 
