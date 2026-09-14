@@ -133,27 +133,41 @@ jobs:
           # secondary instances on remaining cores to diversify coverage.
           # Each secondary synchronizes automatically with the main output
           # directory and contributes independent coverage paths.
-          ALL_PIDS=""
           DICT_ARG=""
           if [ -f kms.dict ]; then DICT_ARG="-x kms.dict"; fi
-          afl-fuzz -i seeds -o out -M main -m none -t 2000 $DICT_ARG -- ./harness-$MODE "$MODE" @@ </dev/null &
-          ALL_PIDS="$!"
-          for i in $(seq 2 "$CORES"); do
-            afl-fuzz -i seeds -o out -S sec$i -m none -t 2000 $DICT_ARG -- ./harness-$MODE "$MODE" @@ </dev/null &
-            ALL_PIDS="$ALL_PIDS $!"
-          done
-          # Wait for any fuzzer instance to find a crash (AFL_BENCH_UNTIL_CRASH
-          # stops that instance); once any PID exits, SIGINT the rest.
-          while true; do
-            for p in $ALL_PIDS; do
-              if ! kill -0 $p 2>/dev/null; then
-                for q in $ALL_PIDS; do kill -INT $q 2>/dev/null || true; done
-                wait 2>/dev/null || true
-                break 2
-              fi
+          # Run all instances under an inner time budget (matching the step
+          # timeout). AFL_BENCH_UNTIL_CRASH keeps an instance alive until it
+          # finds a crash; the inner loop exits early when that happens. When
+          # the budget expires instead, timeout(1) signals the shell, we clean
+          # up the instances and the step continues (the fail-on-crashes step
+          # below is what gates the job).
+          timeout 1080s bash -c '
+            ALL_PIDS=""
+            afl-fuzz -i seeds -o out -M main -m none -t 2000 '"$DICT_ARG"' -- ./harness-'"$MODE"' '"$MODE"' @@ </dev/null &
+            ALL_PIDS="$!"
+            for i in $(seq 2 '"$CORES"'); do
+              afl-fuzz -i seeds -o out -S sec$i -m none -t 2000 '"$DICT_ARG"' -- ./harness-'"$MODE"' '"$MODE"' @@ </dev/null &
+              ALL_PIDS="$ALL_PIDS $!"
             done
-            sleep 1
-          done
+            # Wait for any fuzzer instance to find a crash (AFL_BENCH_UNTIL_CRASH
+            # stops that instance); once any PID exits, SIGINT the rest.
+            while true; do
+              for p in $ALL_PIDS; do
+                if ! kill -0 $p 2>/dev/null; then
+                  for q in $ALL_PIDS; do kill -INT $q 2>/dev/null || true; done
+                  wait 2>/dev/null || true
+                  exit 0
+                fi
+              done
+              sleep 1
+            done
+          '
+          RAFT_STATUS=$?
+          echo "Fuzz budget status=$RAFT_STATUS (124 = time budget expired without crash)"
+          pkill -INT -f 'afl-fuzz' 2>/dev/null || true
+          sleep 1
+          pkill -KILL -f 'afl-fuzz' 2>/dev/null || true
+          wait 2>/dev/null || true
 
           # Collect all crashes from every instance into a single directory.
           mkdir -p out/default/crashes
@@ -161,6 +175,7 @@ jobs:
 
           echo "--- fuzzer_stats (main) ---"
           cat out/main/fuzzer_stats 2>/dev/null || true
+          exit 0
         working-directory: fuzzing
 
       - name: Convert crashes to SARIF
