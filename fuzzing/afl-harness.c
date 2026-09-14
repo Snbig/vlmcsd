@@ -178,6 +178,27 @@ static int readTestcase(const char *const path, BYTE *const buf, const size_t ca
 	return ok;
 }
 
+/* vlmcsd's PRNG is seeded from the wall clock (randomNumberInit), so a
+ * persistent-mode campaign produces a different rand() stream every
+ * iteration and crash inputs cannot be replayed standalone. Re-seed the
+ * generator deterministically from the test case itself: the same input
+ * always yields the same code path (reproducible), different inputs still
+ * explore different paths. FNV-1a over the buffer; the fixed offset keeps
+ * an all-zero test case from zeroing the seed. */
+static void seedPrng(const BYTE *const buf, const size_t len)
+{
+	unsigned int hash = 2166136261u;
+	size_t i;
+
+	for (i = 0; i < len; i++)
+	{
+		hash ^= buf[i];
+		hash *= 16777619u;
+	}
+
+	srand(hash ^ 0x4b4d5301);
+}
+
 int main(int argc, char **argv)
 {
 	isCreateMode = argc < 2 || !strcmp(argv[1], "create");
@@ -203,6 +224,8 @@ int main(int argc, char **argv)
 		 * makes the harness behave identically when run standalone. */
 		if (!readTestcase(inputFile, input, sizeof(input), &len)) continue;
 
+		seedPrng(input, len);
+
 		if (isCreateMode)
 		{
 			runCreateResponse(input, len);
@@ -221,6 +244,8 @@ int main(int argc, char **argv)
 
 	if (!inputFile) return 0;
 	if (!readTestcase(inputFile, input, sizeof(input), &len)) return 0;
+
+	seedPrng(input, len);
 
 	if (isCreateMode)
 	{
