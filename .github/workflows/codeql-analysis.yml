@@ -3,8 +3,12 @@ name: CodeQL Analysis
 on:
   push:
     branches: [master, main]
+    paths-ignore:
+      - '.github/**'
   pull_request:
     branches: [master, main]
+    paths-ignore:
+      - '.github/**'
   schedule:
     - cron: '0 6 * * 1'
 

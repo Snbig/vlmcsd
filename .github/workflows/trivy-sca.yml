@@ -3,8 +3,12 @@ name: Trivy SCA Analysis
 on:
   push:
     branches: [master, main]
+    paths-ignore:
+      - '.github/**'
   pull_request:
     branches: [master, main]
+    paths-ignore:
+      - '.github/**'
   schedule:
     - cron: '0 8 * * 1'
 
@@ -30,6 +34,7 @@ jobs:
           output: 'trivy-fs-results.sarif'
           severity: 'CRITICAL,HIGH,MEDIUM'
           ignore-unfixed: true
+          skip-dirs: '.github/workflows'
 
       - name: Upload Trivy FS SARIF to GitHub Security
         uses: github/codeql-action/upload-sarif@v3
@@ -46,6 +51,7 @@ jobs:
           format: 'table'
           severity: 'CRITICAL,HIGH'
           exit-code: '0'
+          skip-dirs: '.github/workflows'
 
       - name: Run Trivy SBOM generation
         uses: aquasecurity/trivy-action@v0.36.0
@@ -54,6 +60,7 @@ jobs:
           scan-ref: '.'
           format: 'cyclonedx'
           output: 'sbom.json'
+          skip-dirs: '.github/workflows'
 
       - name: Upload SBOM artifact
         uses: actions/upload-artifact@v4

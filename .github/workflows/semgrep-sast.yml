@@ -3,8 +3,12 @@ name: Semgrep SAST Analysis
 on:
   push:
     branches: [master, main]
+    paths-ignore:
+      - '.github/**'
   pull_request:
     branches: [master, main]
+    paths-ignore:
+      - '.github/**'
 
 permissions:
   contents: read
@@ -23,7 +27,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Run Semgrep
-        run: semgrep scan --config auto --sarif --output=semgrep-results.sarif .
+        run: semgrep scan --config auto --exclude .github/workflows --sarif --output=semgrep-results.sarif .
         env:
           SEMGREP_RULES: >-
             p/default
