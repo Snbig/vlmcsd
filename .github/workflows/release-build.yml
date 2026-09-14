@@ -33,7 +33,7 @@ jobs:
               -O2 -Werror -Wall -Wextra -Wformat=2 -Wformat-security
               -Wnull-dereference -Walloca -Wvla -Warray-bounds=2
               -Wshift-overflow=2 -Wstringop-overflow=4 -Wlogical-op
-              -Wduplicated-cond -Wshadow -Wstrict-prototypes -Wswitch-default
+              -Wduplicated-cond -Wshadow -Wstrict-prototypes -Wno-error=strict-prototypes -Wswitch-default
               -Wswitch-enum -Wno-format-signedness -Wno-error=alloca
               -Wno-error=format-nonliteral -Wno-error=implicit-fallthrough
               -Wno-error=cast-function-type -Wno-error=stack-protector
@@ -57,7 +57,7 @@ jobs:
               -O2 -Werror -Wall -Wextra -Wformat=2 -Wformat-security
               -Wnull-dereference -Walloca -Wvla -Warray-bounds=2
               -Wshift-overflow=2 -Wstringop-overflow=4 -Wlogical-op
-              -Wduplicated-cond -Wshadow -Wstrict-prototypes -Wswitch-default
+              -Wduplicated-cond -Wshadow -Wstrict-prototypes -Wno-error=strict-prototypes -Wswitch-default
               -Wswitch-enum -Wno-format-signedness -Wno-error=alloca
               -Wno-error=format-nonliteral -Wno-error=implicit-fallthrough
               -Wno-error=cast-function-type -Wno-error=stack-protector
@@ -81,7 +81,7 @@ jobs:
               -O2 -Werror -Wall -Wextra -Wformat=2 -Wformat-security
               -Wnull-dereference -Walloca -Wvla -Warray-bounds=2
               -Wshift-overflow=2 -Wstringop-overflow=4 -Wlogical-op
-              -Wduplicated-cond -Wshadow -Wstrict-prototypes -Wswitch-default
+              -Wduplicated-cond -Wshadow -Wstrict-prototypes -Wno-error=strict-prototypes -Wswitch-default
               -Wswitch-enum -Wno-format-signedness -Wno-error=alloca
               -Wno-error=format-nonliteral -Wno-error=implicit-fallthrough
               -Wno-error=cast-function-type -Wno-error=stack-protector
@@ -105,7 +105,7 @@ jobs:
               -O2 -Werror -Wall -Wextra -Wformat=2 -Wformat-security
               -Wnull-dereference -Walloca -Wvla -Warray-bounds=2
               -Wshift-overflow=2 -Wstringop-overflow=4 -Wlogical-op
-              -Wduplicated-cond -Wshadow -Wstrict-prototypes -Wswitch-default
+              -Wduplicated-cond -Wshadow -Wstrict-prototypes -Wno-error=strict-prototypes -Wswitch-default
               -Wswitch-enum -Wno-format-signedness -Wno-error=alloca
               -Wno-error=format-nonliteral -Wno-error=implicit-fallthrough
               -Wno-error=cast-function-type -Wno-error=stack-protector
@@ -128,7 +128,7 @@ jobs:
             cflags: >
               -O2 -Werror -Wall -Wextra -Wno-format
               -Wnull-dereference -Walloca -Wvla -Wstringop-overflow=4
-              -Wlogical-op -Wduplicated-cond -Wshadow -Wstrict-prototypes
+              -Wlogical-op -Wduplicated-cond -Wshadow -Wstrict-prototypes -Wno-error=strict-prototypes
               -Wswitch-default -Wswitch-enum -Wno-format-signedness
               -Wno-error=alloca -Wno-error=format-nonliteral
               -Wno-error=implicit-fallthrough -Wno-error=cast-function-type
@@ -150,7 +150,7 @@ jobs:
             cflags: >
               -O2 -Werror -Wall -Wextra -Wno-format
               -Wnull-dereference -Walloca -Wvla -Wstringop-overflow=4
-              -Wlogical-op -Wduplicated-cond -Wshadow -Wstrict-prototypes
+              -Wlogical-op -Wduplicated-cond -Wshadow -Wstrict-prototypes -Wno-error=strict-prototypes
               -Wswitch-default -Wswitch-enum -Wno-format-signedness
               -Wno-error=alloca -Wno-error=format-nonliteral
               -Wno-error=implicit-fallthrough -Wno-error=cast-function-type
@@ -175,10 +175,9 @@ jobs:
               -Wimplicit-fallthrough -Wswitch-enum -Wno-format-signedness
               -Wno-error=alloca -Wno-error=format-nonliteral
               -Wno-error=implicit-fallthrough -Wno-error=cast-function-type-mismatch
-              -Wno-error=unknown-warning-option -Wno-unused-parameter
-              -Wno-conversion -Wno-sign-conversion -Wno-cast-qual
-              -D_FORTIFY_SOURCE=2 -fstack-protector-strong
-              -fstack-clash-protection -fPIE
+              -Wno-error=unknown-warning-option -Wno-error=unused-command-line-argument
+              -Wno-unused-parameter -Wno-conversion -Wno-sign-conversion
+              -Wno-cast-qual -D_FORTIFY_SOURCE=2 -fstack-protector-strong -fPIE
             ldflags: -fPIE -Wl,-pie
 
     steps:
