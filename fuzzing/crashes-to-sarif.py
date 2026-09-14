@@ -14,12 +14,17 @@ import sys
 #   #1 0x55f4f6632c09 in DecryptResponseV4 ../src/kms.c:994
 FRAME_RE = re.compile(r'#(\d+) +0x[0-9a-f]+ in (\S+) (\S+):(\d+)(?::\d+)?')
 
+# Matches unsymbolized ASAN frames like:
+#   #1 0x55f4f6632c09  (/tmp/opencode/harness+0x2c09) (BuildId: ...)
+# produced by clang/afl builds without a working external symbolizer.
+RAW_FRAME_RE = re.compile(r'#(\d+) +0x[0-9a-f]+ +\(([^)]+)\+0x([0-9a-f]+)\)')
+
 # Matches the ASAN summary line to extract the error kind:
 #   ==12345==ERROR: AddressSanitizer: global-buffer-overflow on ...
 ASAN_ERR_RE = re.compile(r'ERROR: (AddressSanitizer: \S+|LeakSanitizer: \S+)')
 
 
-def parse_asan(stderr_text):
+def parse_asan(stderr_text, harness=None):
     """Return (error_kind, [(func, file, line), ...]) from an ASAN report."""
     kind = "unknown"
     m = ASAN_ERR_RE.search(stderr_text)
@@ -30,22 +35,61 @@ def parse_asan(stderr_text):
     # relative to the build directory (fuzzing/), e.g. "../src/kms.c", while
     # the ASAN runtime reports its own files as "../../../../src/libsanitizer/...".
     def is_project(path):
+        if 'libsanitizer' in path or 'sanitizer_common' in path:
+            return False
         if path.startswith('../src/') or path.startswith('src/'):
-            return not ('libsanitizer' in path or 'sanitizer_common' in path)
-        return path.endswith('afl-harness.c') or 'afl-harness.c' in path
-
-    project_frames = []
-    for _idx, func, path, line in FRAME_RE.findall(stderr_text):
-        if is_project(path):
-            project_frames.append((func, path, int(line)))
+            return True
+        if '/src/' in path:
+            return True
+        return 'afl-harness.c' in path
 
     # The frames are ordered innermost (#0) first, so the first project frame is
     # the deepest in-project faulting site.
-    if project_frames:
-        return kind, project_frames[0]
+    def first_project_frame(frames):
+        for func, path, line in frames:
+            if is_project(path):
+                return func, path, int(line)
+        return None
+
+    symbolic_frames = []
+    for _idx, func, path, line in FRAME_RE.findall(stderr_text):
+        symbolic_frames.append((func, path, int(line)))
+
+    top = first_project_frame(symbolic_frames)
+    if top:
+        return kind, top
+
+    # The symbolizer may be missing (e.g. clang-built binary on a box without
+    # llvm-symbolizer), in which case ASAN prints raw addresses like
+    #   #0 0x55f4f6632c09  (/tmp/opencode/harness+0x2c09)
+    # Recover function names and source locations with addr2line.
+    raw_offsets = []
+    for _idx, path, offset in RAW_FRAME_RE.findall(stderr_text):
+        raw_offsets.append((path, offset))
+
+    resolved = []
+    for path, offset in raw_offsets:
+        if harness and os.path.basename(path) == os.path.basename(harness):
+            try:
+                out = subprocess.run(
+                    ["addr2line", "-f", "-e", harness, f"0x{offset}"],
+                    capture_output=True, text=True, timeout=10,
+                ).stdout.splitlines()
+                if len(out) >= 2 and out[1] and ':0' not in out[1]:
+                    resolved.append((out[0].strip(), out[1].strip()))
+            except Exception:
+                pass
+
+    for func, loc in resolved:
+        try:
+            file, line = loc.rsplit(':', 1)
+        except ValueError:
+            continue
+        if is_project(file) and file.endswith('.c'):
+            return kind, (func, file, int(line))
 
     # Fallback: first frame whose path looks project-related.
-    for _idx, func, path, line in FRAME_RE.findall(stderr_text):
+    for func, path, line in symbolic_frames:
         if 'vlmcsd' in path or '/src/' in path:
             return kind, (func, path, int(line))
 
@@ -57,6 +101,13 @@ def normalise_path(path):
     for _ in range(6):
         if path.startswith('../'):
             path = path[3:]
+    # addr2line returns absolute paths. Code scanning resolves locations
+    # relative to the checkout root, so collapse "/.../src/foo.c" to
+    # "src/foo.c" and "…/fuzzing/afl-harness.c" to "fuzzing/afl-harness.c".
+    if 'afl-harness.c' in path:
+        return 'fuzzing/' + os.path.basename(path)
+    if '/src/' in path:
+        return 'src/' + path.split('/src/', 1)[1]
     return path
 
 
@@ -116,22 +167,31 @@ def build_sarif(findings):
     return sarif
 
 
-def run_harness(harness, mode, crash_file, timeout=5):
-    """Run the fuzz harness on a crash input, return ASAN stderr."""
+def run_harness(harness, mode, crash_file, timeout=5, attempts=3):
+    """Run the fuzz harness on a crash input, return ASAN stderr.
+
+    The afl persistent-loop harness re-seeds its PRNG per iteration, so a
+    crash input may occasionally not fault on the first standalone run.
+    Retry a few times before giving up.
+    """
     env = os.environ.copy()
     env["ASAN_OPTIONS"] = "symbolize=1:print_stacktrace=1"
-    try:
-        result = subprocess.run(
-            [harness, mode, crash_file],
-            capture_output=True,
-            timeout=timeout,
-            env=env,
-        )
-        return result.stderr.decode(errors="replace")
-    except subprocess.TimeoutExpired:
-        return ""
-    except Exception:
-        return ""
+    for _ in range(attempts):
+        try:
+            result = subprocess.run(
+                [harness, mode, crash_file],
+                capture_output=True,
+                timeout=timeout,
+                env=env,
+            )
+            stderr = result.stderr.decode(errors="replace")
+            if result.returncode != 0 and "AddressSanitizer" in stderr:
+                return stderr
+        except subprocess.TimeoutExpired:
+            return ""
+        except Exception:
+            return ""
+    return ""
 
 
 def main():
@@ -152,7 +212,7 @@ def main():
         if not stderr:
             continue
 
-        kind, frame = parse_asan(stderr)
+        kind, frame = parse_asan(stderr, harness=args.harness)
         if frame is None:
             continue
 
