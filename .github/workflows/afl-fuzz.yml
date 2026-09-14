@@ -141,6 +141,7 @@ jobs:
           # the budget expires instead, timeout(1) signals the shell, we clean
           # up the instances and the step continues (the fail-on-crashes step
           # below is what gates the job).
+          set +e
           timeout 1080s bash -c '
             ALL_PIDS=""
             afl-fuzz -i seeds -o out -M main -m none -t 2000 '"$DICT_ARG"' -- ./harness-'"$MODE"' '"$MODE"' @@ </dev/null &
@@ -163,6 +164,7 @@ jobs:
             done
           '
           RAFT_STATUS=$?
+          set -e
           echo "Fuzz budget status=$RAFT_STATUS (124 = time budget expired without crash)"
           pkill -INT -f 'afl-fuzz' 2>/dev/null || true
           sleep 1
