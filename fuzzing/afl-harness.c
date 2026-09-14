@@ -152,85 +152,85 @@ static void initFuzzer(void)
 	randomNumberInit();
 }
 
-int main(int argc, char **argv)
+static int readTestcase(const char *const path, BYTE *const buf, const size_t cap, size_t *const outLen)
 {
-	isCreateMode = argc < 2 || !strcmp(argv[1], "create");
-
-	initFuzzer();
-
-#ifdef __AFL_COMPILER
-	__AFL_FUZZ_INIT();
-
-	BYTE *const buf = __AFL_FUZZ_TESTCASE_BUF;
-
-	/* Deferred fork-server: the data tables above are initialized once and
-	 * inherited by every forked child. */
-	__AFL_INIT();
-
-	while (__AFL_LOOP(1000))
-	{
-		const int len = __AFL_FUZZ_TESTCASE_LEN;
-
-		if (len < 0) continue;
-
-		if (isCreateMode)
-		{
-			runCreateResponse(buf, (size_t)len);
-		}
-		else
-		{
-			runDecryptResponse(buf, (size_t)len);
-		}
-	}
-
-	return 0;
-#else
-	/* Plain compiler: run one test case from a file (classic AFL mode). */
 	FILE *file;
 	long len;
-	BYTE *data;
+	int ok = 0;
 
-	if (argc < 3) return 0;
-
-	file = fopen(argv[2], "rb");
+	file = fopen(path, "rb");
 	if (!file) return 0;
 
 	fseek(file, 0, SEEK_END);
 	len = ftell(file);
 	fseek(file, 0, SEEK_SET);
 
-	if (len <= 0 || (size_t)len > MAX_REQUEST_BUFFER + MAX_RESPONSE_BUFFER)
+	if (len > 0 && (size_t)len <= cap)
 	{
-		fclose(file);
-		return 0;
-	}
-
-	data = (BYTE *)malloc((size_t)len);
-	if (!data)
-	{
-		fclose(file);
-		return 0;
-	}
-
-	if (fread(data, 1, (size_t)len, file) != (size_t)len)
-	{
-		free(data);
-		fclose(file);
-		return 0;
+		if (fread(buf, 1, (size_t)len, file) == (size_t)len)
+		{
+			*outLen = (size_t)len;
+			ok = 1;
+		}
 	}
 
 	fclose(file);
+	return ok;
+}
+
+int main(int argc, char **argv)
+{
+	isCreateMode = argc < 2 || !strcmp(argv[1], "create");
+	const char *const inputFile = argc > 2 ? argv[2] : NULL;
+
+	/* Deferred fork-server: the data tables above are initialized once and
+	 * inherited by every forked child. */
+	initFuzzer();
+
+#ifdef __AFL_COMPILER
+	__AFL_FUZZ_INIT();
+	__AFL_INIT();
+
+	while (__AFL_LOOP(1000))
+	{
+		static BYTE input[MAX_REQUEST_BUFFER + MAX_RESPONSE_BUFFER];
+		size_t len;
+
+		/* With "@@" on the command line afl-fuzz rewrites the file every
+		 * iteration, so we must re-read it ourselves: the shared-memory
+		 * test case buffer is only populated when the target is started
+		 * without a file argument. Reading the file each iteration also
+		 * makes the harness behave identically when run standalone. */
+		if (!readTestcase(inputFile, input, sizeof(input), &len)) continue;
+
+		if (isCreateMode)
+		{
+			runCreateResponse(input, len);
+		}
+		else
+		{
+			runDecryptResponse(input, len);
+		}
+	}
+
+	return 0;
+#else
+	/* Plain compiler: run one test case from a file (classic AFL mode). */
+	static BYTE input[MAX_REQUEST_BUFFER + MAX_RESPONSE_BUFFER];
+	size_t len;
+
+	if (!inputFile) return 0;
+	if (!readTestcase(inputFile, input, sizeof(input), &len)) return 0;
 
 	if (isCreateMode)
 	{
-		runCreateResponse(data, (size_t)len);
+		runCreateResponse(input, len);
 	}
 	else
 	{
-		runDecryptResponse(data, (size_t)len);
+		runDecryptResponse(input, len);
 	}
 
-	free(data);
 	return 0;
 #endif
 }
