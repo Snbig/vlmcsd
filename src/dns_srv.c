@@ -199,9 +199,9 @@ int getKmsServerList(kms_server_dns_ptr** serverlist, const char *restrict query
 
 	uint16_t i, answers = ns_msg_count(msg, ns_s_an);
 	//if(!(*serverlist = (kms_server_dns_ptr*)malloc(answers * sizeof(kms_server_dns_ptr)))) OutOfMemory();
-	*serverlist = (kms_server_dns_ptr*)malloc(answers * sizeof(kms_server_dns_ptr));
+	*serverlist = (kms_server_dns_ptr*)vlmcsd_malloc((size_t)answers * sizeof(kms_server_dns_ptr));
 
-	memset(*serverlist, 0, answers * sizeof(kms_server_dns_ptr));
+	memset(*serverlist, 0, (size_t)answers * sizeof(kms_server_dns_ptr));
 
 	for (i = 0; i < answers; i++)
 	{

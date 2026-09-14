@@ -58,8 +58,11 @@ static void Sha256ProcessBlock(Sha256Ctx *Ctx, BYTE *block)
 	DWORD  h = Ctx->State[7];
 
 	for (i = 0; i < 16; i++)
-		//w[ i ] = GET_UAA32BE(block, i);
-		w[i] = BE32(((DWORD*)block)[i]);
+	{
+		DWORD word;
+		memcpy(&word, block + (i << 2), sizeof(word));
+		w[i] = BE32(word);
+	}
 
 	for (i = 16; i < 64; i++)
 		w[ i ] = SI4(w[ i - 2 ]) + w[ i - 7 ] + SI3(w[ i - 15 ]) + w[ i - 16 ];
@@ -132,12 +135,16 @@ static void Sha256Finish(Sha256Ctx *Ctx, BYTE *hash)
 	}
 
 	//PUT_UAA64BE(Ctx->Buffer, (unsigned long long)(Ctx->Len * 8), 7);
-	((uint64_t*)Ctx->Buffer)[7] = BE64((uint64_t)Ctx->Len << 3);
+	const uint64_t length = BE64((uint64_t)Ctx->Len << 3);
+	memcpy(Ctx->Buffer + 56, &length, sizeof(length));
 	Sha256ProcessBlock(Ctx, Ctx->Buffer);
 
 	for (i = 0; i < 8; i++)
+	{
 		//PUT_UAA32BE(hash, Ctx->State[i], i);
-		((DWORD*)hash)[i] = BE32(Ctx->State[i]);
+		const DWORD state = BE32(Ctx->State[i]);
+		memcpy(hash + (i << 2), &state, sizeof(state));
+	}
 
 }
 
