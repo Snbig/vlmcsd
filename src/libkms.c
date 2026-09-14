@@ -61,16 +61,18 @@ EXTERNC __declspec(EXTERNAL)SOCKET __cdecl ConnectToServer(const char* host, con
 #	endif // defined(_WIN32) && !defined(USE_MSRPC)
 
 	size_t adrlen = strlen(host) + 16;
-	char* RemoteAddr = (char*)alloca(adrlen);
+	char* RemoteAddr = (char*)vlmcsd_malloc(adrlen);
 	vlmcsd_snprintf(RemoteAddr, adrlen, "[%s]:%s", host, port);
 	sock = connectToAddress(RemoteAddr, addressFamily, FALSE);
 
 	if (sock == INVALID_RPCCTX)
 	{
 		printerrorf("Fatal: Could not connect to %s\n", RemoteAddr);
+		free(RemoteAddr);
 		return sock;
 	}
 
+	free(RemoteAddr);
 	return sock;
 }
 

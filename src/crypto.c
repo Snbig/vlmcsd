@@ -36,16 +36,14 @@ static const BYTE SBox[] = {
 };
 
 
-void XorBlock(const BYTE *const in, const BYTE *out) // Ensure that this is always 32 bit aligned
+void XorBlock(const BYTE *const in, const BYTE *out) // Works on any alignment
 {
-	/*UAA64( out, 0 ) ^= UAA64( in, 0 );
-	UAA64( out, 1 ) ^= UAA64( in, 1 );*/
-
 	uint_fast8_t i;
+	BYTE* const d = (BYTE*)out; // the buffer is modified by design (see AddRoundKey)
 
-	for (i = 0; i < AES_BLOCK_WORDS; i++)
+	for (i = 0; i < AES_BLOCK_BYTES; i++)
 	{
-		((DWORD*)out)[i] ^= ((DWORD*)in)[i];
+		d[i] ^= in[i];
 	}
 }
 
@@ -81,13 +79,16 @@ void MixColumnsR(BYTE *restrict state)
 	uint_fast8_t i = 0;
 	for (; i < AES_BLOCK_WORDS; i++)
 	{
+		DWORD word;
+		memcpy(&word, state + (i << 2), sizeof(word));
 		#if defined(_CRYPTO_OPENSSL) && defined(_OPENSSL_SOFTWARE) && defined(_USE_AES_FROM_OPENSSL) //Always byte swap regardless of endianess
-			DWORD word = BS32(((DWORD *) state)[i]);
-			((DWORD *) state)[i] = BS32(MulE(word) ^ ROR32(MulB(word), 8) ^ ROR32(MulD(word), 16) ^ ROR32(Mul9(word), 24));
+			word = BS32(word);
+			word = BS32(MulE(word) ^ ROR32(MulB(word), 8) ^ ROR32(MulD(word), 16) ^ ROR32(Mul9(word), 24));
 		#else
-			DWORD word = LE32(((DWORD *) state)[i]);
-			((DWORD *) state)[i] = LE32(MulE(word) ^ ROR32(MulB(word), 8) ^ ROR32(MulD(word), 16) ^ ROR32(Mul9(word), 24));
+			word = LE32(word);
+			word = LE32(MulE(word) ^ ROR32(MulB(word), 8) ^ ROR32(MulD(word), 16) ^ ROR32(Mul9(word), 24));
 		#endif
+		memcpy(state + (i << 2), &word, sizeof(word));
 	}
 }
 
@@ -166,8 +167,11 @@ static void MixColumns(BYTE *state)
 	uint_fast8_t i = 0;
 	for (; i < AES_BLOCK_WORDS; i++)
 	{
-		DWORD word = LE32(((DWORD *) state)[i]);
-		((DWORD *) state)[i] = LE32(Mul2(word) ^ ROR32(Mul3(word), 8) ^ ROR32(word, 16) ^ ROR32(word, 24));
+		DWORD word;
+		memcpy(&word, state + (i << 2), sizeof(word));
+		word = LE32(word);
+		word = LE32(Mul2(word) ^ ROR32(Mul3(word), 8) ^ ROR32(word, 16) ^ ROR32(word, 24));
+		memcpy(state + (i << 2), &word, sizeof(word));
 	}
 }
 

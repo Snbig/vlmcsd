@@ -443,6 +443,7 @@ static void logRequest(REQUEST* baseRequest)
 	}
 	else if (!strcasecmp(productName, "Unknown"))
 	{
+		uuid2StringLE(&baseRequest->ActID, guidString);
 		productName = guidString;
 	}
 
