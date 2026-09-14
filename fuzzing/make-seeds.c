@@ -94,14 +94,18 @@ int main(int argc, char **argv)
 	memcpy(&requestV4, raw, sizeof(requestV4));
 	free(raw);
 
-	/* Server-side responses for the client-side decrypt targets. */
+	/* Server-side responses for the client-side decrypt targets. Written at
+	 * their exact on-wire length: DecryptResponseV4/V6 size checks derive
+	 * from the provided responseSize, so an oversized seed would not only
+	 * trigger the bugs being hunted but abort afl-fuzz's initial dry run
+	 * (it refuses a corpus where every input crashes). */
 	memset(response, 0, sizeof(response));
-	if (CreateResponseV6(&requestV6, response, "fuzz"))
-		writeFile(argv[1], "resp6.bin", response, sizeof(response));
+	size = CreateResponseV6(&requestV6, response, "fuzz");
+	if (size) writeFile(argv[1], "resp6.bin", response, size);
 
 	memset(response, 0, sizeof(response));
-	if (CreateResponseV4(&requestV4, response, "fuzz"))
-		writeFile(argv[1], "resp4.bin", response, sizeof(response));
+	size = CreateResponseV4(&requestV4, response, "fuzz");
+	if (size) writeFile(argv[1], "resp4.bin", response, size);
 
 	/* A structurally shaped all-zero request for both parsers. */
 	writeFile(argv[1], "zero6.bin", (const BYTE *)&(const REQUEST_V6){ .Version = 6 }, sizeof(REQUEST_V6));

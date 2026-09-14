@@ -61,8 +61,15 @@ jobs:
         run: |
           rm -rf seeds && mkdir -p seeds
           ./make-seeds seeds
-          # structural zeros are a fine request base but crash the response parser instantly
-          if [ "$MODE" = "decrypt" ]; then rm -f seeds/zero6.bin; fi
+          # Korpus is protocol-shaped per target: requests for the create
+          # parser, responses for the decrypt parser. Feeding a response to
+          # the request parser (and vice versa) makes the initial dry run
+          # crash, which afl-fuzz treats as "no valid seed" and aborts.
+          if [ "$MODE" = "decrypt" ]; then
+            rm -f seeds/req6.bin seeds/req4.bin seeds/zero6.bin
+          else
+            rm -f seeds/resp6.bin seeds/resp4.bin
+          fi
         working-directory: fuzzing
 
       - name: Build fuzz target
