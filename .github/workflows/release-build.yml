@@ -219,27 +219,30 @@ jobs:
               print(f'{f}: PE  DEP+ASLR+HIGH-ENTROPY = {ok}')
           elif sys.platform == 'darwin':
               # Universal (fat) binaries must be thinned before otool shows the
-              # Mach header flags dword (MH_PIE = 0x200000).
+              # Mach header. Newer otool prints symbolic columns
+              # (MH_MAGIC_64 ... NOUNDEFS DYLDLINK TWOLEVEL PIE) while older
+              # builds print numeric magic (0xfeedfacf) and flags (0x200000).
               ok = False
               for arch in ('arm64', 'x86_64'):
                   tmp = f + '.' + arch
                   r = subprocess.run(['lipo', '-thin', arch, '-output', tmp, f],
                                      capture_output=True, text=True)
                   if r.returncode != 0:
-                      print(f'  lipo -thin {arch} failed: {r.stderr.strip()}')
                       continue
                   out = subprocess.run(['otool', '-hv', tmp], capture_output=True, text=True).stdout
                   subprocess.run(['rm', '-f', tmp])
-                  print(f'  otool -hv (thin {arch}):')
-                  print(out)
                   for line in out.splitlines():
                       t = line.split()
-                      if t and t[0].lower() in ('0xfeedfacf', '0xfeedface'):
+                      if not t:
+                          continue
+                      head = t[0].lower()
+                      if head in ('mh_magic_64', 'mh_magic'):
+                          ok = ok or t[-1].lower() == 'pie'
+                          break
+                      if head in ('0xfeedfacf', '0xfeedface'):
                           try: flags = int(t[-1], 16)
                           except ValueError: continue
-                          print(f'  flags=0x{flags:x}')
-                          if flags & 0x200000:
-                              ok = True
+                          ok = ok or bool(flags & 0x200000)
                           break
               print(f'{f}: Mach-O PIE = {ok}')
           else:
