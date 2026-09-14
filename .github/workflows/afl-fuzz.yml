@@ -106,8 +106,19 @@ jobs:
           exit 0
         working-directory: fuzzing
 
+      - name: Replay regression crashes
+        if: always() && hashFiles('fuzzing/regression-crashes/*.bin') != ''
+        run: |
+          mkdir -p all-crashes
+          python3 crashes-to-sarif.py \
+            --harness ./replay-$MODE \
+            --mode "$MODE" \
+            --crashes regression-crashes \
+            --output ../afl-results-regression-$MODE.sarif || true
+        working-directory: fuzzing
+
       - name: Fuzz
-        timeout-minutes: 10
+        timeout-minutes: 20
         env:
           AFL_NO_UI: 1
           AFL_SKIP_CPUFREQ: 1
@@ -117,18 +128,54 @@ jobs:
           ASAN_OPTIONS: abort_on_error=1:symbolize=0:detect_leaks=0
         run: |
           rm -rf out
-          timeout 480s afl-fuzz -i seeds -o out -m none -t 2000 -- ./harness-$MODE "$MODE" @@ </dev/null || true
-          echo "--- fuzzer_stats ---"
-          cat out/default/fuzzer_stats 2>/dev/null || true
+          CORES=$(nproc 2>/dev/null || echo 1)
+          # Run the primary instance as the main exploration worker; spawn
+          # secondary instances on remaining cores to diversify coverage.
+          # Each secondary synchronizes automatically with the main output
+          # directory and contributes independent coverage paths.
+          ALL_PIDS=""
+          DICT_ARG=""
+          if [ -f kms.dict ]; then DICT_ARG="-x kms.dict"; fi
+          afl-fuzz -i seeds -o out -M main -m none -t 2000 $DICT_ARG -- ./harness-$MODE "$MODE" @@ </dev/null &
+          ALL_PIDS="$!"
+          for i in $(seq 2 "$CORES"); do
+            afl-fuzz -i seeds -o out -S sec$i -m none -t 2000 $DICT_ARG -- ./harness-$MODE "$MODE" @@ </dev/null &
+            ALL_PIDS="$ALL_PIDS $!"
+          done
+          # Wait for any fuzzer instance to find a crash (AFL_BENCH_UNTIL_CRASH
+          # stops that instance); once any PID exits, SIGINT the rest.
+          while true; do
+            for p in $ALL_PIDS; do
+              if ! kill -0 $p 2>/dev/null; then
+                for q in $ALL_PIDS; do kill -INT $q 2>/dev/null || true; done
+                wait 2>/dev/null || true
+                break 2
+              fi
+            done
+            sleep 1
+          done
+
+          # Collect all crashes from every instance into a single directory.
+          mkdir -p out/default/crashes
+          find out -path '*/crashes/id:*' -exec sh -c 'cp "$1" out/default/crashes/$(basename "$1")-$(basename "$(dirname "$(dirname "$1")")")' _ {} \; 2>/dev/null || true
+
+          echo "--- fuzzer_stats (main) ---"
+          cat out/main/fuzzer_stats 2>/dev/null || true
         working-directory: fuzzing
 
       - name: Convert crashes to SARIF
         if: always()
         run: |
+          # Merge regression fixtures (already replayed) and live fuzz crashes
+          # into one directory, then produce a single SARIF per mode. The
+          # converter deduplicates by (artifact_path, line) internally.
+          mkdir -p all-crashes
+          cp regression-crashes/*.bin all-crashes/ 2>/dev/null || true
+          cp out/default/crashes/id:* all-crashes/ 2>/dev/null || true
           python3 crashes-to-sarif.py \
             --harness ./replay-$MODE \
             --mode "$MODE" \
-            --crashes out/default/crashes \
+            --crashes all-crashes \
             --output ../afl-results-$MODE.sarif
         working-directory: fuzzing
 

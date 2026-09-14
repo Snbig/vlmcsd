@@ -1,0 +1,86 @@
+# AFL++ dictionary for the KMS protocol (vlmcsd)
+# Binary protocol tokens extracted from vlmcsd structures and seed files.
+#
+# Format: token_name = "\xHH\xHH..."
+
+# --- Version markers (upper 16 bits of first DWORD, LE) ---
+# V4 request / response: 0x00040000
+version_v4 = "\x00\x00\x04\x00"
+# V6 request / response: 0x00060000
+version_v6 = "\x00\x00\x06\x00"
+# V5 (same on-wire as V6 for request): 0x00050000
+version_v5 = "\x00\x00\x05\x00"
+# Version 0.4 on the wire (as V4 response VERSION_INFO)
+resp_version_v4 = "\x00\x00\x04\x00"
+
+# --- PIDSize field (V4 responses, LE32) ---
+pidsize_zero   = "\x00\x00\x00\x00"
+pidsize_100    = "\x64\x00\x00\x00"
+pidsize_128    = "\x80\x00\x00\x00"
+pidsize_max32  = "\xff\xff\xff\x7f"
+pidsize_0x40   = "\x40\x00\x00\x00"
+
+# --- Policy / count values (LE32) ---
+policy_zero  = "\x00\x00\x00\x00"
+policy_5     = "\x05\x00\x00\x00"
+policy_1     = "\x01\x00\x00\x00"
+count_max    = "\xff\xff\xff\xff"
+count_1000   = "\xe8\x03\x00\x00"
+
+# --- CLIENT VERSION_INFO base bytes ---
+# MajorVer=0 MinorVer=0
+version_info_zero = "\x00\x00\x00\x00"
+# MajorVer=0 MinorVer=4
+version_info_v4   = "\x00\x00\x04\x00"
+# MajorVer=0 MinorVer=6
+version_info_v6   = "\x00\x00\x06\x00"
+
+# --- GUID patterns (16 bytes) ---
+# NULL GUID
+guid_null      = "\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00"
+# All 0xFF
+guid_max       = "\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff"
+# FuzzPC workstation name (WCHAR[7])
+fuzzpc_wchar   = "\x46\x00\x75\x00\x7A\x00\x7A\x00\x50\x00\x43\x00\x00\x00"
+
+# --- IV / alignment patterns (16 bytes) ---
+iv_all_zero    = "\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00"
+iv_all_ff      = "\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff"
+iv_inc          = "\x00\x01\x02\x03\x04\x05\x06\x07\x08\x09\x0a\x0b\x0c\x0d\x0e\x0f"
+
+# --- DWORD alignment trigger (misaligned load in XorBlock/AesCbc) ---
+# The DWORD at crypto.c:48 must NOT be 4-byte aligned. Place a DWORD at
+# an odd offset to trigger the UBSAN misaligned load:
+# 01 00 00 00 at offset +1 of a 16-byte region.
+dword_at_odd_offset = "\x00\x01\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00"
+
+# --- HMAC / SHA256 patterns ---
+# 16-byte HMAC placeholder
+hmac_16        = "\x01\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00"
+# 32-byte SHA256 placeholder
+sha256_32      = "\x01\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00"
+
+# --- PKCS#7 padding for AES-CBC (response pad block) ---
+pkcs7_pad4     = "\x04\x04\x04\x04"
+
+# --- Workstation name (WCHAR[64], null terminated) ---
+# "FUZZ" in wide chars
+ws_fuzz_wide   = "\x46\x00\x55\x00\x5A\x00\x5A\x00\x00\x00\x00\x00"
+# Max workstation name: 'A' * 64 (WCHAR)
+ws_max_wide    = "\x41\x00\x41\x00\x41\x00\x41\x00"
+
+# --- ClientTime / FILETIME patterns ---
+time_zero      = "\x00\x00\x00\x00\x00\x00\x00\x00"
+time_max       = "\xff\xff\xff\xff\xff\xff\xff\xff"
+
+# --- VLActivationInterval / VLRenewalInterval (LE32) ---
+act_interval_120  = "\x78\x00\x00\x00"
+renew_interval_4  = "\x00\x38\x00\x00"
+
+# --- HwId (8 bytes) ---
+hwid_zero      = "\x00\x00\x00\x00\x00\x00\x00\x00"
+hwid_nonzero   = "\x48\x41\x52\x44\x57\x41\x52\x45"
+
+# --- Encrypted response IV+data boundary (response_size > sizeof) ---
+# Oversized payload following a valid header to stress SHA256 reads
+payload_oversize = "\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00"

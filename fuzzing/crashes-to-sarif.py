@@ -213,7 +213,10 @@ def main():
     ap.add_argument("--output", required=True, help="Path to write SARIF JSON")
     args = ap.parse_args()
 
-    crash_files = sorted(glob.glob(os.path.join(args.crashes, "id:*")))
+    crash_files = sorted(
+        glob.glob(os.path.join(args.crashes, "id:*"))
+        + glob.glob(os.path.join(args.crashes, "*.bin"))
+    )
     findings = []
 
     seen = set()
