@@ -278,7 +278,7 @@ static char* itoc(char *const c, const int i, uint_fast8_t digits)
 	}
 
 	strcat(formatString, "u");
-	sprintf(c, formatString, i);
+	snprintf(c, 12, formatString, i);
 	return c;
 }
 
@@ -430,15 +430,20 @@ static void logRequest(REQUEST* baseRequest)
 
 	char *productName;
 	char clientName[64];
+	char guidString[GUID_STRING_LENGTH + 1];
 
 	int32_t index = getProductIndexFromAllLists(&baseRequest->ActID, &productName);
 	if (index < 0) index = getProductIndexFromAllLists(&baseRequest->KMSID, &productName);
 	if (index < 0) index = getProductIndexFromAllLists(&baseRequest->AppID, &productName);
 
-	if (index < 0 || !strcasecmp(productName, "Unknown"))
+	if (index < 0)
 	{
-		productName = (char*)alloca(GUID_STRING_LENGTH + 1);
-		uuid2StringLE(&baseRequest->ActID, productName);
+		uuid2StringLE(&baseRequest->ActID, guidString);
+		productName = guidString;
+	}
+	else if (!strcasecmp(productName, "Unknown"))
+	{
+		productName = guidString;
 	}
 
 	ucs2_to_utf8(baseRequest->WorkstationName, clientName, 64, 64);
@@ -982,13 +987,35 @@ static uint8_t checkPidLength(const RESPONSE *const responseBase)
  */
 RESPONSE_RESULT DecryptResponseV4(RESPONSE_V4* response_v4, const int responseSize, BYTE* const rawResponse, const BYTE* const rawRequest)
 {
+	RESPONSE_RESULT result;
+
+	// The constant header must fit into the received buffer before we can read PIDSize.
+	if (responseSize < (int)V4_PRE_EPID_SIZE)
+	{
+		result.mask = 0;
+		return result;
+	}
+
 	const int copySize =
-		V4_PRE_EPID_SIZE +
+		(int)V4_PRE_EPID_SIZE +
 		(LE32(((RESPONSE_V4*)rawResponse)->ResponseBase.PIDSize) <= PID_BUFFER_SIZE << 1 ?
 			LE32(((RESPONSE_V4*)rawResponse)->ResponseBase.PIDSize) :
-			PID_BUFFER_SIZE << 1);
+			(int)PID_BUFFER_SIZE << 1);
 
-	const int messageSize = copySize + V4_POST_EPID_SIZE;
+	const int messageSize = copySize + (int)V4_POST_EPID_SIZE;
+
+	// Bytes after the (variable sized) KmsPID must fit into the CMID..MAC area of RESPONSE_V4.
+	const int postEpidCopy = (int)(sizeof(RESPONSE_V4) - V4_PRE_EPID_SIZE - sizeof(response_v4->ResponseBase.KmsPID));
+
+	// Validate all sizes before copying to prevent a heap buffer overflow on a
+	// malformed v4 response (discovered via AFL++, see memcpy below).
+	if (copySize < (int)V4_PRE_EPID_SIZE || copySize > (int)sizeof(RESPONSE_V4) ||
+		responseSize < messageSize + (int)sizeof(response_v4->MAC) ||
+		responseSize - copySize > postEpidCopy)
+	{
+		result.mask = 0;
+		return result;
+	}
 
 	memcpy(response_v4, rawResponse, copySize);
 	memcpy(&response_v4->ResponseBase.CMID, rawResponse + copySize, responseSize - copySize);
@@ -1000,7 +1027,6 @@ RESPONSE_RESULT DecryptResponseV4(RESPONSE_V4* response_v4, const int responseSi
 	AesCmacV4(rawResponse, messageSize, mac);
 
 	REQUEST_V4* request_v4 = (REQUEST_V4*)rawRequest;
-	RESPONSE_RESULT result;
 
 	result.mask = (DWORD)~0;
 	result.PidLengthOK = checkPidLength((RESPONSE*)rawResponse);
@@ -1090,6 +1116,16 @@ RESPONSE_RESULT DecryptResponseV6(RESPONSE_V6* response_v6, int responseSize, BY
 {
 	RESPONSE_RESULT result;
 	result.mask = (DWORD)~0; // Set all bits in the results mask to 1. Assume success first.
+
+	// A valid v5/v6 response is at least the unencrypted header plus PIDSize and
+	// at most a fully padded RESPONSE_V6. Reject anything outside this range to
+	// avoid out-of-bounds reads/writes on a malformed response (AFL++ finding).
+	if (responseSize < (int)(V6_UNENCRYPTED_SIZE + sizeof(((RESPONSE*)0)->PIDSize)) ||
+		responseSize > (int)sizeof(RESPONSE_V6) + (int)AES_BLOCK_BYTES)
+	{
+		result.mask = 0;
+		return result;
+	}
 	result.effectiveResponseSize = responseSize;
 
 	int copySize1 =
@@ -1097,6 +1133,14 @@ RESPONSE_RESULT DecryptResponseV6(RESPONSE_V6* response_v6, int responseSize, BY
 
 	// Decrypt KMS Server Response (encrypted part starts after RequestIV)
 	responseSize -= copySize1;
+
+	// The encrypted part must be a whole number of AES blocks for the CBC walk
+	// inside AesDecryptCbc to stay inside the received buffer.
+	if (responseSize < (int)AES_BLOCK_BYTES || responseSize % AES_BLOCK_BYTES != 0)
+	{
+		result.mask = 0;
+		return result;
+	}
 
 	AesCtx ctx;
 	const int_fast8_t v6 = LE16(((RESPONSE_V6*)response)->MajorVer) > 5;
@@ -1133,6 +1177,17 @@ RESPONSE_RESULT DecryptResponseV6(RESPONSE_V6* response_v6, int responseSize, BY
 		sizeof(response_v6->ResponseBase.PIDSize) +
 		(pidSize <= PID_BUFFER_SIZE << 1 ? pidSize : PID_BUFFER_SIZE << 1);
 
+	// Copy part 2 requires this many bytes after the PID.
+	const size_t copySize2 = v6 ? V6_POST_EPID_SIZE : V5_POST_EPID_SIZE;
+
+	// Both copies together must fit into the received buffer. Without this check
+	// a small response combined with a large PIDSize would overflow the reads.
+	if ((size_t)copySize1 + copySize2 > (size_t)result.effectiveResponseSize)
+	{
+		result.mask = 0;
+		return result;
+	}
+
 	// Copy part 1 of response up to variable sized PID
 	memcpy(response_v6, response, copySize1);
 
@@ -1140,7 +1195,6 @@ RESPONSE_RESULT DecryptResponseV6(RESPONSE_V6* response_v6, int responseSize, BY
 	response_v6->ResponseBase.KmsPID[PID_BUFFER_SIZE - 1] = 0;
 
 	// Copy part 2
-	const size_t copySize2 = v6 ? V6_POST_EPID_SIZE : V5_POST_EPID_SIZE;
 	memcpy(&response_v6->ResponseBase.CMID, response + copySize1, copySize2);
 
 	// Decrypting the response is finished here. Now we check the results for validity
@@ -1173,11 +1227,17 @@ RESPONSE_RESULT DecryptResponseV6(RESPONSE_V6* response_v6, int responseSize, BY
 
 	result.HashOK = !memcmp(response_v6->Hash, hashVerify, sizeof(hashVerify));
 
-	// size before encryption (padding not included)
+	// size before encryption (padding not included). PIDSize is capped exactly like
+	// in the copy above so a crafted huge PIDSize cannot cause an oversized HMAC
+	// read/write in VerifyResponseV6 below.
+	const DWORD pidSizeCapped =
+		LE32(response_v6->ResponseBase.PIDSize) <= PID_BUFFER_SIZE << 1 ?
+		LE32(response_v6->ResponseBase.PIDSize) : PID_BUFFER_SIZE << 1;
+
 	result.correctResponseSize =
 		(v6 ? sizeof(RESPONSE_V6) : sizeof(RESPONSE_V5))
 		- sizeof(response_v6->ResponseBase.KmsPID)
-		+ LE32(response_v6->ResponseBase.PIDSize);
+		+ pidSizeCapped;
 
 	// Version specific stuff
 	if (v6)
