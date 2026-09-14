@@ -205,30 +205,37 @@ jobs:
       - name: Verify binary hardening
         run: |
           set -e
+          LD_FLAT="$(echo '${{ matrix.ldflags }}' | tr '\n' ' ')"
           for f in bin/vlmcsd${{ matrix.ext }} bin/vlmcs${{ matrix.ext }}; do
-            python3 - "$f" <<'PY'
-          import subprocess, sys
+            LD_FLAT="$LD_FLAT" python3 - "$f" <<'PY'
+          import os, re, subprocess, sys
           f = sys.argv[1]
           if f.endswith('.exe'):
               out = subprocess.run(['objdump', '-x', f], capture_output=True, text=True).stdout.lower()
+              heva = '--high-entropy-va' in os.environ.get('LD_FLAT', '')
               ok = ('dynamic base' in out and 'nx compatible' in out and
-                    'high entropy' in out)
+                    (not heva or 'high entropy' in out))
               print(f'{f}: PE  DEP+ASLR+HIGH-ENTROPY = {ok}')
           elif sys.platform == 'darwin':
-              out = subprocess.run(['otool', '-hv', f], capture_output=True, text=True).stdout
-              flags = 0
-              for line in out.splitlines():
-                  t = line.split()
-                  if t and t[0].lower().startswith('0xfeedfacf'):
-                      try: flags = int(t[-1], 16); break
-                      except ValueError: pass
-              ok = bool(flags & 0x200000)
+              # Universal (fat) binaries have no Mach header at offset 0, so otool
+              # must be queried per architecture to read the flags dword.
+              ok = False
+              for arch in ('arm64', 'x86_64'):
+                  out = subprocess.run(['otool', '-hv', '-arch', arch, f],
+                                       capture_output=True, text=True).stdout
+                  for line in out.splitlines():
+                      t = line.split()
+                      if t and t[0].lower() == '0xfeedfacf':
+                          try: flags = int(t[-1], 16)
+                          except ValueError: continue
+                          if flags & 0x200000: ok = True
+                          break
               print(f'{f}: Mach-O PIE = {ok}')
           else:
               h = subprocess.run(['readelf', '-hW', f], capture_output=True, text=True).stdout
               l = subprocess.run(['readelf', '-lW', f], capture_output=True, text=True).stdout
               d = subprocess.run(['readelf', '-dW', f], capture_output=True, text=True).stdout
-              pie = 'Type: DYN' in h
+              pie = re.search(r'^\s*Type:\s*DYN\b', h, re.M) is not None
               relro = 'GNU_RELRO' in l
               now = 'BIND_NOW' in d
               nx = True
