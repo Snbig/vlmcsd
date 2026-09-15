@@ -1864,6 +1864,15 @@ int newmain()
 	if (!IsRestarted)
 	{
 #	endif // NO_SIGHUP
+		// SEC-AUDIT-002: when only -u is given without -g, derive the primary
+		// group from the user's passwd entry so the process does not keep
+		// root's group (and supplementary groups) after dropping privileges.
+		if (uid != INVALID_UID && gid == INVALID_GID)
+		{
+			struct passwd* const u = uname ? getpwnam(uname) : getpwuid(uid);
+			gid = u ? u->pw_gid : (gid_t)uid;
+		}
+
 		if (gid != INVALID_GID)
 		{
 			if (setgid(gid))
