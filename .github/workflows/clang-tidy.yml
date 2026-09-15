@@ -1,0 +1,49 @@
+name: Clang-Tidy Static Analysis
+
+on:
+  push:
+    branches: [ master, main, release ]
+    paths-ignore: ['.github/**']
+  pull_request:
+    branches: [ master, main, release ]
+    paths-ignore: ['.github/**']
+  schedule:
+    - cron: '0 8 * * 2'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  checks: write
+  pull-requests: write
+
+jobs:
+  clang-tidy:
+    name: clang-tidy (analyzer/bugprone/cert/security)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends bear clang clang-tidy
+
+      - name: Generate compile_commands.json
+        run: |
+          bear intercept --output events.json -- \
+            make -j"$(nproc)" allmulti CC=clang CFLAGS="-O0 -g -Wno-error"
+          bear citnames --output compile_commands.json --input events.json
+          cp compile_commands.json src/
+
+      - name: Run cpp-linter (clang-tidy)
+        id: linter
+        uses: cpp-linter/cpp-linter-action@v2
+        with:
+          tidy-checks: '-*,clang-analyzer-*,bugprone-*,cert-*,security-*,performance-*,portability-*'
+          files: 'src/**/*.c|src/**/*.h'
+          database: 'src/compile_commands.json'
+          style: ''
+          lines-changed-only: true
+          fail-on-issue: true
+          thread-comments: true
+          step-summary: true

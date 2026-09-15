@@ -2,11 +2,11 @@ name: CodeQL Analysis
 
 on:
   push:
-    branches: [master, main]
+    branches: [master, main, release]
     paths-ignore:
       - '.github/**'
   pull_request:
-    branches: [master, main]
+    branches: [master, main, release]
     paths-ignore:
       - '.github/**'
   schedule:
