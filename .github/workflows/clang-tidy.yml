@@ -15,6 +15,7 @@ permissions:
   contents: read
   checks: write
   pull-requests: write
+  security-events: write
 
 jobs:
   clang-tidy:
@@ -48,3 +49,20 @@ jobs:
           thread-comments: false
           file-annotations: true
           step-summary: true
+
+      - name: Generate SARIF report
+        run: |
+          pip install --quiet clang-tidy-sarif
+          # No file args: clang-tidy analyzes every file in the compile
+          # database. Same check groups as the cpp-linter step above.
+          clang-tidy -p src \
+            -checks='-*,clang-analyzer-*,bugprone-*,cert-*,security-*,performance-*,portability-*' \
+            > clang-tidy-output.txt 2>&1 || true
+          clang-tidy-sarif clang-tidy-output.txt > clang-tidy-results.sarif || true
+
+      - name: Upload SARIF to Security tab
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: clang-tidy-results.sarif
+          category: clang-tidy

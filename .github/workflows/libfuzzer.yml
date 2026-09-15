@@ -34,6 +34,10 @@ jobs:
       MODE: ${{ matrix.mode }}
       CFLAGS: -std=gnu11 -O1 -g -DNO_LOG -DNO_VERBOSE_LOG -DNO_EXTERNAL_DATA -DUNSAFE_DATA_LOAD -I../src
       SAN: -fsanitize=fuzzer,address,undefined -fno-sanitize=shift -fno-sanitize-recover=undefined
+      # gcc build for crash replay: its ASAN/UBSAN runtime prints
+      # symbolizable reports that crashes-to-sarif.py parses (the clang
+      # libFuzzer build traps on UBSAN without a stderr trace).
+      REPLAY_SAN: -fsanitize=address,undefined -fno-sanitize=shift -fno-sanitize-recover=undefined
     steps:
       - uses: actions/checkout@v4
 
@@ -96,6 +100,35 @@ jobs:
             -artifact_prefix=artifacts/ -print_final_stats=1 2>&1 | tail -30 || true
           echo "artifact_count=$(ls artifacts 2>/dev/null | wc -l)"
         working-directory: fuzzing
+
+      - name: Build replay harness (for SARIF)
+        run: |
+          SRCS="kms.c crypto.c crypto_internal.c endian.c output.c shared_globals.c helpers.c kmsdata.c"
+          rm -f obj-*.o
+          for src in $SRCS; do gcc $CFLAGS $REPLAY_SAN -c ../src/$src -o obj-$src.o || exit 1; done
+          gcc $CFLAGS $REPLAY_SAN -c afl-harness.c -o afl-harness.o || exit 1
+          gcc $REPLAY_SAN obj-*.o afl-harness.o -o replay-$MODE || exit 1
+          file replay-$MODE
+        working-directory: fuzzing
+
+      - name: Convert crashes to SARIF
+        if: always()
+        run: |
+          mkdir -p all-crashes
+          cp artifacts/* all-crashes/ 2>/dev/null || true
+          python3 crashes-to-sarif.py \
+            --harness ./replay-$MODE \
+            --mode "$MODE" \
+            --crashes all-crashes \
+            --output ../libfuzzer-results-$MODE.sarif || true
+        working-directory: fuzzing
+
+      - name: Upload SARIF to Security tab
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: libfuzzer-results-${{ matrix.mode }}.sarif
+          category: libfuzzer-${{ matrix.mode }}
 
       - name: Upload artifacts
         if: always()
