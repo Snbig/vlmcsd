@@ -28,16 +28,32 @@ LEVEL_MAP = {
     "note": "note",
 }
 
+# Source-snippet lines clang-tidy prints under a diagnostic, e.g.
+#    83 |                 memcpy(&word, state + (i << 2), sizeof(word));
+#       |                 ^~~~~~
+# These are NOT message continuations and must be skipped.
+SNIPPET_RE = re.compile(r"^\s*\d+\s+\|")
+CARET_RE = re.compile(r"^\s*\|")
+
 
 def normalise_path(path):
-    """Collapse absolute paths to checkout-relative ones."""
-    if "/src/" in path:
-        return "src/" + path.split("/src/", 1)[1]
-    if "/lib/" in path:
-        return "lib/" + path.split("/lib/", 1)[1]
-    if "/fuzzing/" in path:
-        return "fuzzing/" + path.split("/fuzzing/", 1)[1]
-    return path
+    """Collapse paths to checkout-relative ones GitHub can resolve.
+
+    clang-tidy run with ``-p src`` emits paths relative to the build
+    directory (e.g. ``crypto.c``, ``./types.h``) or absolute paths
+    (e.g. ``/home/runner/work/vlmcsd/vlmcsd/src/vlmcsd.c``). GitHub
+    resolves SARIF URIs against the repo root, so relative paths must
+    be prefixed with ``src/``.
+    """
+    if path.startswith("/"):
+        for prefix in ("/src/", "/lib/", "/fuzzing/"):
+            if prefix in path:
+                return prefix.strip("/") + "/" + path.split(prefix, 1)[1]
+        return path  # system header, keep as-is
+    rel = path[2:] if path.startswith("./") else path
+    if rel.startswith(("src/", "lib/", "fuzzing/")):
+        return rel
+    return "src/" + rel
 
 
 def build_sarif(findings):
@@ -127,6 +143,11 @@ def main():
             m = DIAG_RE.match(line)
             if m:
                 flush()
+                # clang-analyzer path-tracking notes (e.g. "Assuming the
+                # condition is false", "expanded from macro ...") carry no
+                # check name and are not standalone findings; skip them.
+                if m.group("severity") == "note":
+                    continue
                 current = (
                     m.group("file"),
                     int(m.group("line")),
@@ -136,6 +157,10 @@ def main():
                     m.group("check"),
                 )
             elif current is not None and line.strip():
+                # Source-snippet and caret lines printed under a diagnostic
+                # are not message continuations; skip them.
+                if SNIPPET_RE.match(line) or CARET_RE.match(line):
+                    continue
                 # Continuation of a wrapped diagnostic. The [check-name]
                 # suffix, if any, sits on the last continuation line.
                 parts = current[4]
