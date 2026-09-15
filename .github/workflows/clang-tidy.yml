@@ -39,11 +39,12 @@ jobs:
         id: linter
         uses: cpp-linter/cpp-linter-action@v2
         with:
+          extensions: 'c,h'
+          ignore: 'fuzzing/**'
           tidy-checks: '-*,clang-analyzer-*,bugprone-*,cert-*,security-*,performance-*,portability-*'
-          files: 'src/**/*.c|src/**/*.h'
           database: 'src/compile_commands.json'
           style: ''
           lines-changed-only: true
-          fail-on-issue: true
-          thread-comments: true
+          thread-comments: false
+          file-annotations: true
           step-summary: true
