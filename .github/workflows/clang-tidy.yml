@@ -52,7 +52,7 @@ jobs:
 
       - name: Generate SARIF report
         run: |
-          pip install --quiet clang-tidy-sarif
+          pip install --quiet --break-system-packages clang-tidy-sarif
           # No file args: clang-tidy analyzes every file in the compile
           # database. Same check groups as the cpp-linter step above.
           clang-tidy -p src \
