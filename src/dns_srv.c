@@ -236,7 +236,7 @@ int getKmsServerList(kms_server_dns_ptr** serverlist, const char *restrict query
 			continue;
 		}
 
-		sprintf(kms_server->serverName + strlen(kms_server->serverName), ":%hu", GET_UA16BE(&srvrecord->port));
+		vlmcsd_snprintf(kms_server->serverName + strlen(kms_server->serverName), sizeof(kms_server->serverName) - strlen(kms_server->serverName), ":%hu", GET_UA16BE(&srvrecord->port));
 		kms_server->priority = GET_UA16BE(&srvrecord->priority);
 		kms_server->weight = GET_UA16BE(&srvrecord->weight);
 

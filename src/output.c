@@ -179,6 +179,17 @@ void uuid2StringLE(const GUID *const guid, char *const string)
 	);
 }
 
+// SEC-AUDIT-003: mask the unique parts of a GUID string (keeps the first
+// group, masks the rest) so verbose logs cannot be used for client/host
+// fingerprinting if log files leak. guid must be a 36-char GUID string.
+static void maskGuid(char* const guid)
+{
+	guid[9] = guid[10] = guid[11] = guid[12] = '*';
+	guid[14] = guid[15] = guid[16] = guid[17] = '*';
+	guid[19] = guid[20] = guid[21] = guid[22] = '*';
+	guid[24] = guid[25] = guid[26] = guid[27] = guid[28] = guid[29] = guid[30] = guid[31] = guid[32] = guid[33] = guid[34] = guid[35] = '*';
+}
+
 #if !defined(NO_VERBOSE_LOG) && !defined(NO_LOG)
 void logRequestVerbose(REQUEST* Request, const PRINTFUNC p)
 {
@@ -204,9 +215,11 @@ void logRequestVerbose(REQUEST* Request, const PRINTFUNC p)
 	p("KMS ID (aka KMS counted ID)     : %s (%s)\n", guidBuffer, productName);
 
 	uuid2StringLE(&Request->CMID, guidBuffer);
+	maskGuid(guidBuffer);
 	p("Client machine ID               : %s\n", guidBuffer);
 
 	uuid2StringLE(&Request->CMID_prev, guidBuffer);
+	maskGuid(guidBuffer);
 	p("Previous client machine ID      : %s\n", guidBuffer);
 
 
@@ -230,12 +243,13 @@ void logResponseVerbose(const char *const ePID, const BYTE *const hwid, RESPONSE
 	p("KMS host extended PID           : %s\n", ePID);
 	if (LE16(response->MajorVer) > 5)
 #	ifndef _WIN32
-		p("KMS host Hardware ID            : %016llX\n", (unsigned long long)BE64(*(uint64_t*)hwid));
+		p("KMS host Hardware ID            : %08llX********\n", (unsigned long long)(BE64(*(uint64_t*)hwid) >> 32));
 #	else // _WIN32
-		p("KMS host Hardware ID            : %016I64X\n", (unsigned long long)BE64(*(uint64_t*)hwid));
+		p("KMS host Hardware ID            : %08I64X********\n", (unsigned long long)(BE64(*(uint64_t*)hwid) >> 32));
 #	endif // WIN32
 
 	uuid2StringLE(&response->CMID, guidBuffer);
+	maskGuid(guidBuffer);
 	p("Client machine ID               : %s\n", guidBuffer);
 
 	char mbstr[64];
