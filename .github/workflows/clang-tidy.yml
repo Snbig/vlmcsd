@@ -52,13 +52,14 @@ jobs:
 
       - name: Generate SARIF report
         run: |
-          pip install --quiet --break-system-packages clang-tidy-sarif
-          # No file args: clang-tidy analyzes every file in the compile
-          # database. Same check groups as the cpp-linter step above.
+          # clang-tidy has no native SARIF output and the clang-tidy-sarif
+          # PyPI package does not exist, so parse the stable text format with
+          # the bundled converter. Same check groups as the cpp-linter step.
           clang-tidy -p src \
             -checks='-*,clang-analyzer-*,bugprone-*,cert-*,security-*,performance-*,portability-*' \
             > clang-tidy-output.txt 2>&1 || true
-          clang-tidy-sarif clang-tidy-output.txt > clang-tidy-results.sarif || true
+          python3 .github/scripts/clang-tidy-to-sarif.py \
+            clang-tidy-output.txt clang-tidy-results.sarif
 
       - name: Upload SARIF to Security tab
         if: always()
