@@ -1,0 +1,301 @@
+{
+  "$schema": "https://json.schemastore.org/sarif-2.1.0.json",
+  "version": "2.1.0",
+  "runs": [
+    {
+      "tool": {
+        "driver": {
+          "name": "OpenAgent Security Audit",
+          "organization": "OpenAgent",
+          "version": "1.0.0",
+          "informationUri": "https://github.com/Snbig/vlmcsd",
+          "rules": [
+            {
+              "id": "SEC-AUDIT-001",
+              "name": "dns-srv-serverName-heap-overflow",
+              "shortDescription": {
+                "text": "Unbounded sprintf appends port to fixed-size heap buffer in DNS SRV parsing"
+              },
+              "fullDescription": {
+                "text": "In getKmsServerList(), ns_name_uncompress() may fill kms_server->serverName (char[260]) with a DNS name of up to 255 octets plus NUL (256 bytes). The subsequent sprintf() appends ':port' (up to 6 chars plus NUL = 7 bytes) without bounds checking, writing up to 263 bytes into a 260-byte heap buffer (up to 3 bytes past the end)."
+              },
+              "help": {
+                "text": "Replace sprintf() with snprintf() bounded by the remaining buffer space: snprintf(kms_server->serverName + strlen(kms_server->serverName), sizeof(kms_server->serverName) - strlen(kms_server->serverName), \":%hu\", GET_UA16BE(&srvrecord->port));",
+                "markdown": "Replace `sprintf()` with `snprintf()` bounded by the remaining buffer space:\n\n```c\nsnprintf(kms_server->serverName + strlen(kms_server->serverName),\n         sizeof(kms_server->serverName) - strlen(kms_server->serverName),\n         \":%hu\", GET_UA16BE(&srvrecord->port));\n```"
+              },
+              "properties": {
+                "tags": ["security", "memory-corruption", "heap-overflow"],
+                "security-severity": "8.0",
+                "precision": "high",
+                "category": "memory-corruption"
+              }
+            },
+            {
+              "id": "SEC-AUDIT-002",
+              "name": "incomplete-privilege-drop-without-gid",
+              "shortDescription": {
+                "text": "Incomplete privilege drop when only -u is specified without -g"
+              },
+              "fullDescription": {
+                "text": "When the daemon is started with -u (user) but without -g (group), gid remains INVALID_GID, so the setgid() and setgroups() calls are skipped entirely. setuid() runs alone, leaving the process with the root primary group and all root supplementary groups."
+              },
+              "help": {
+                "text": "When -u is given without -g, resolve the target user's primary group (e.g. via getpwnam()) and call setgid() plus setgroups(0, NULL) to clear supplementary groups, or require -g explicitly.",
+                "markdown": "When `-u` is given without `-g`, resolve the target user's primary group (e.g. via `getpwnam()`) and call `setgid()` plus `setgroups(0, NULL)` to clear supplementary groups, or require `-g` explicitly."
+              },
+              "properties": {
+                "tags": ["security", "privilege", "privilege-drop"],
+                "security-severity": "5.0",
+                "precision": "high",
+                "category": "privilege"
+              }
+            },
+            {
+              "id": "SEC-AUDIT-003",
+              "name": "epid-and-hardware-id-logged",
+              "shortDescription": {
+                "text": "Full ePID and KMS host Hardware ID written to log on every activation"
+              },
+              "fullDescription": {
+                "text": "For every activation response, the full randomized ePID is written to the log (kms.c logResponse(), non-verbose path). In verbose mode, logResponseVerbose() additionally writes the 64-bit KMS host Hardware ID and the client machine ID. These identifiers are per-host and can be used to correlate/track activation events if logs leak."
+              },
+              "help": {
+                "text": "Consider redacting or truncating the ePID and Hardware ID in logs, or gating verbose logging behind an explicit operator decision and protecting log files with restrictive permissions.",
+                "markdown": "Consider redacting or truncating the ePID and Hardware ID in logs, or gating verbose logging behind an explicit operator decision and protecting log files with restrictive permissions."
+              },
+              "properties": {
+                "tags": ["security", "information-disclosure", "logging"],
+                "security-severity": "2.0",
+                "precision": "high",
+                "category": "information-disclosure"
+              }
+            },
+            {
+              "id": "SEC-AUDIT-004",
+              "name": "hardcoded-build-time-clamps-epid-timestamps",
+              "shortDescription": {
+                "text": "Hardcoded BUILD_TIME (2018-10-07) clamps ePID timestamps; stale comment references 2013"
+              },
+              "fullDescription": {
+                "text": "kms.c defines BUILD_TIME as the constant 1538922811 (2018-10-07) as a fallback when the build system does not inject the real build timestamp. maxTime is clamped to this value, so generated ePIDs never carry timestamps earlier than 2018-10-07. The surrounding comment still claims '10/17/2013 1:00 pm', which is stale and misleading."
+              },
+              "help": {
+                "text": "Update the stale comment to match the actual constant, or better, always inject the real build timestamp from the build system (GNUmakefile already does via -DBUILD_TIME=$(shell date '+%s')).",
+                "markdown": "Update the stale comment to match the actual constant, or better, always inject the real build timestamp from the build system (`GNUmakefile` already does via `-DBUILD_TIME=$(shell date '+%s')`)."
+              },
+              "properties": {
+                "tags": ["security", "logic", "timestamp"],
+                "security-severity": "1.0",
+                "precision": "high",
+                "category": "logic"
+              }
+            },
+            {
+              "id": "SEC-AUDIT-005",
+              "name": "wine-emulation-environment-detection",
+              "shortDescription": {
+                "text": "Dynamic symbol resolution detects Wine emulation environment and alters behavior"
+              },
+              "fullDescription": {
+                "text": "In getClientIp(), when SUPPORT_WINE is defined (disabled by default), the code resolves 'wine_get_unix_file_name' from kernel32.dll via GetProcAddress(). If present, it returns RPC_S_CANNOT_SUPPORT instead of calling RpcBindingServerFromClient(), because Wine terminates the calling thread on that call. This is environment detection that changes control flow, but it is a documented Wine compatibility workaround, not malicious behavior."
+              },
+              "help": {
+                "text": "No action required. The block is compiled out unless SUPPORT_WINE is explicitly defined. If kept, document the rationale (already done in the comment) and keep it disabled by default.",
+                "markdown": "No action required. The block is compiled out unless `SUPPORT_WINE` is explicitly defined. If kept, document the rationale (already done in the comment) and keep it disabled by default."
+              },
+              "properties": {
+                "tags": ["security", "environment-detection", "wine"],
+                "security-severity": "1.0",
+                "precision": "high",
+                "category": "environment-detection"
+              }
+            }
+          ]
+        }
+      },
+      "results": [
+        {
+          "ruleId": "SEC-AUDIT-001",
+          "ruleIndex": 0,
+          "level": "error",
+          "message": {
+            "text": "Heap buffer overflow: sprintf() appends ':port' to serverName[260] without bounds checking after ns_name_uncompress() may fill it to 256 bytes (255-char DNS name + NUL). Up to 3 bytes written past the end of the heap buffer."
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "src/dns_srv.c"
+                },
+                "region": {
+                  "startLine": 233,
+                  "endLine": 239
+                }
+              }
+            }
+          ],
+          "partialFingerprints": {
+            "primaryLocationLineHash": "5a45447eb17da094a035cae728b4822f"
+          },
+          "properties": {
+            "confidence": "high",
+            "category": "memory-corruption",
+            "technical_evidence": "src/dns_srv.c:233 ns_name_uncompress(ns_msg_base(msg), ns_msg_end(msg), srvrecord->name, kms_server->serverName, sizeof(kms_server->serverName)) — bounded write of up to 256 bytes into serverName. src/dns_srv.c:239 sprintf(kms_server->serverName + strlen(kms_server->serverName), \":%hu\", GET_UA16BE(&srvrecord->port)) — unbounded append of up to 7 bytes. src/dns_srv.h:18 declares char serverName[260]. Worst case 256 + 7 = 263 > 260.",
+            "attack_or_trigger_condition": "A malicious or compromised DNS server returns an SRV record whose target name is at or near the 255-octet DNS maximum. The vlmcs client (or vlmcsd in DNS-resolver mode) then overflows the heap buffer by up to 3 bytes while appending the port.",
+            "impact": "Heap corruption in the client path; potential crash or, in a worst case with attacker-controlled adjacent heap layout, limited memory corruption. The attacker controls the DNS response, making the overflow attacker-influenced.",
+            "why_suspicious": "Unbounded sprintf() appending to a fixed-size heap buffer is a classic memory-corruption pattern; two independent audit agents flagged the same lines.",
+            "benign_explanation": "Upstream Wind4/vlmcsd code, not introduced by this fork. The overflow is small (<=3 bytes) and requires a hostile DNS response; it is a genuine bug but shows no signs of intentional backdooring.",
+            "recommended_action": "Replace sprintf() with snprintf() bounded by remaining buffer space (see rule help)."
+          }
+        },
+        {
+          "ruleId": "SEC-AUDIT-002",
+          "ruleIndex": 1,
+          "level": "warning",
+          "message": {
+            "text": "Incomplete privilege drop: when only -u is given (gid == INVALID_GID), setgid() and setgroups() are skipped and only setuid() runs, leaving the root primary group and root supplementary groups active."
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "src/vlmcsd.c"
+                },
+                "region": {
+                  "startLine": 1867,
+                  "endLine": 1889
+                }
+              }
+            }
+          ],
+          "partialFingerprints": {
+            "primaryLocationLineHash": "5c108aec132d047014e9b88be40d9ed0"
+          },
+          "properties": {
+            "confidence": "high",
+            "category": "privilege",
+            "technical_evidence": "src/vlmcsd.c:1867 if (gid != INVALID_GID) { setgid(gid); setgroups(1, &gid); } — both calls are inside the gid guard. src/vlmcsd.c:1882 if (uid != INVALID_UID && setuid(uid)) — setuid runs unconditionally when -u is given. With -u only, gid stays INVALID_GID so the group drop never executes.",
+            "attack_or_trigger_condition": "Operator starts the daemon as root with -u <user> but omits -g <group>. If the daemon is later compromised (e.g. via the DNS SRV overflow or another memory-safety bug), the attacker retains the root primary group and root supplementary groups.",
+            "impact": "Privilege escalation from a daemon compromise to group-level access: reading files/directories accessible to root's groups, and any capability granted via supplementary groups.",
+            "why_suspicious": "Incomplete privilege drop is a classic hardening flaw that widens the blast radius of any memory-corruption bug in the daemon.",
+            "benign_explanation": "Upstream Wind4 behavior; the documented usage expects both -u and -g. No evidence of intentional malice — it is an incomplete hardening measure.",
+            "recommended_action": "When -u is given without -g, resolve the user's primary group via getpwnam() and call setgid() + setgroups(0, NULL), or require -g explicitly."
+          }
+        },
+        {
+          "ruleId": "SEC-AUDIT-003",
+          "ruleIndex": 2,
+          "level": "note",
+          "message": {
+            "text": "Full randomized ePID is logged for every activation (kms.c:564); verbose mode additionally logs the 64-bit KMS host Hardware ID and client machine ID (output.c:230,233,239)."
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "src/kms.c"
+                },
+                "region": {
+                  "startLine": 564,
+                  "endLine": 570
+                }
+              }
+            },
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "src/output.c"
+                },
+                "region": {
+                  "startLine": 230,
+                  "endLine": 239
+                }
+              }
+            }
+          ],
+          "partialFingerprints": {
+            "primaryLocationLineHash": "ee2c34fac98b9ada53253f33cd51d7d5"
+          },
+          "properties": {
+            "confidence": "high",
+            "category": "information-disclosure",
+            "technical_evidence": "src/kms.c:564 logger(\"Sending ePID (%s): %s\\n\", EpidSource, utf8pid); — full ePID in non-verbose log. src/kms.c:570 logResponseVerbose(utf8pid, hwId, baseResponse, &logger); src/output.c:230 p(\"KMS host extended PID           : %s\\n\", ePID); src/output.c:233 p(\"KMS host Hardware ID            : %016llX\\n\", ...); src/output.c:239 p(\"Client machine ID               : %s\\n\", guidBuffer);",
+            "attack_or_trigger_condition": "An attacker who obtains the daemon log file (e.g. via log disclosure, backup leak, or shared logging infrastructure) can extract per-host identifiers for every activation event.",
+            "impact": "Privacy/correlation risk: ePIDs and Hardware IDs are per-host unique identifiers; leaked logs enable tracking of activation activity and host fingerprinting.",
+            "why_suspicious": "Logging unique per-host identifiers is a data-exfiltration-adjacent pattern, though here it is written to the local log only, not transmitted.",
+            "benign_explanation": "Upstream Wind4 logging behavior; verbose logging is opt-in (-v). No network transmission of these values was found.",
+            "recommended_action": "Redact or truncate ePID/Hardware ID in logs, or restrict log file permissions and treat logs as sensitive."
+          }
+        },
+        {
+          "ruleId": "SEC-AUDIT-004",
+          "ruleIndex": 3,
+          "level": "note",
+          "message": {
+            "text": "BUILD_TIME is hardcoded to 1538922811 (2018-10-07) as a fallback, clamping ePID timestamps; the surrounding comment still references 10/17/2013."
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "src/kms.c"
+                },
+                "region": {
+                  "startLine": 346,
+                  "endLine": 351
+                }
+              }
+            }
+          ],
+          "partialFingerprints": {
+            "primaryLocationLineHash": "c03c19a4b201dab3539768c6023d77ac"
+          },
+          "properties": {
+            "confidence": "high",
+            "category": "logic",
+            "technical_evidence": "src/kms.c:346 #ifndef BUILD_TIME; src/kms.c:347 #define BUILD_TIME 1538922811; src/kms.c:350 if (maxTime < (time_t)BUILD_TIME); src/kms.c:351 maxTime = (time_t)BUILD_TIME; src/GNUmakefile:161 injects the real timestamp via -DBUILD_TIME=$(shell date '+%s') when building with GNU make.",
+            "attack_or_trigger_condition": "Only reachable when the build system does not define BUILD_TIME (non-GNUmakefile builds). Clamps generated ePID timestamps to >= 2018-10-07.",
+            "impact": "Cosmetic/functional: ePIDs on misconfigured builds carry a fixed floor timestamp; no security impact. The stale 2013 comment could mislead maintainers.",
+            "why_suspicious": "A hardcoded timestamp constant with a mismatched comment is a minor integrity smell, but it is a documented fallback pattern.",
+            "benign_explanation": "Fallback for systems with wrong clocks, preventing ePIDs with implausible pre-build timestamps. Not malicious.",
+            "recommended_action": "Update the stale comment to match the constant, or always inject the real build timestamp from the build system."
+          }
+        },
+        {
+          "ruleId": "SEC-AUDIT-005",
+          "ruleIndex": 4,
+          "level": "note",
+          "message": {
+            "text": "When SUPPORT_WINE is defined (disabled by default), getClientIp() resolves 'wine_get_unix_file_name' from kernel32.dll and returns RPC_S_CANNOT_SUPPORT if found, altering control flow based on the detected runtime environment."
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "src/msrpc-server.c"
+                },
+                "region": {
+                  "startLine": 135,
+                  "endLine": 145
+                }
+              }
+            }
+          ],
+          "partialFingerprints": {
+            "primaryLocationLineHash": "1344c20e9806636897b549dc390a5b91"
+          },
+          "properties": {
+            "confidence": "high",
+            "category": "environment-detection",
+            "technical_evidence": "src/msrpc-server.c:137 #ifdef SUPPORT_WINE; src/msrpc-server.c:138 HMODULE h = GetModuleHandleA(\"kernel32.dll\"); src/msrpc-server.c:143 if (GetProcAddress(h, \"wine_get_unix_file_name\")) return RPC_S_CANNOT_SUPPORT; src/msrpc-server.c:135-136 comment: 'Fix for wine (disabled by default...)'. SUPPORT_WINE is not defined anywhere in the tree.",
+            "attack_or_trigger_condition": "Only compiled when SUPPORT_WINE is explicitly defined by the builder. When active, running under Wine causes the RPC client-IP lookup to fail gracefully instead of crashing the thread.",
+            "impact": "None in default builds. In SUPPORT_WINE builds, behavior differs under Wine (graceful failure) vs native Windows (normal operation).",
+            "why_suspicious": "Dynamic symbol resolution to detect an emulation environment and change behavior is a pattern also used by malware to evade analysis.",
+            "benign_explanation": "Documented Wine compatibility workaround: Wine terminates the thread on RpcBindingServerFromClient(), so the code detects Wine and returns an error instead. Disabled by default; no evasion of security tooling is involved.",
+            "recommended_action": "No action required; keep disabled by default and retain the explanatory comment."
+          }
+        }
+      ]
+    }
+  ]
+}
