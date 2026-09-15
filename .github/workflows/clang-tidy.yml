@@ -1,0 +1,68 @@
+name: Clang-Tidy Static Analysis
+
+on:
+  push:
+    branches: [ master, main, release ]
+    paths-ignore: ['.github/**']
+  pull_request:
+    branches: [ master, main, release ]
+    paths-ignore: ['.github/**']
+  schedule:
+    - cron: '0 8 * * 2'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  checks: write
+  pull-requests: write
+  security-events: write
+
+jobs:
+  clang-tidy:
+    name: clang-tidy (analyzer/bugprone/cert/security)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends bear clang clang-tidy
+
+      - name: Generate compile_commands.json
+        run: |
+          bear intercept --output events.json -- \
+            make -j"$(nproc)" allmulti CC=clang CFLAGS="-O0 -g -Wno-error"
+          bear citnames --output compile_commands.json --input events.json
+          cp compile_commands.json src/
+
+      - name: Run cpp-linter (clang-tidy)
+        id: linter
+        uses: cpp-linter/cpp-linter-action@v2
+        with:
+          extensions: 'c,h'
+          ignore: 'fuzzing/**'
+          tidy-checks: '-*,clang-analyzer-*,bugprone-*,cert-*,security-*,performance-*,portability-*'
+          database: 'src/compile_commands.json'
+          style: ''
+          lines-changed-only: true
+          thread-comments: false
+          file-annotations: true
+          step-summary: true
+
+      - name: Generate SARIF report
+        run: |
+          pip install --quiet clang-tidy-sarif
+          # No file args: clang-tidy analyzes every file in the compile
+          # database. Same check groups as the cpp-linter step above.
+          clang-tidy -p src \
+            -checks='-*,clang-analyzer-*,bugprone-*,cert-*,security-*,performance-*,portability-*' \
+            > clang-tidy-output.txt 2>&1 || true
+          clang-tidy-sarif clang-tidy-output.txt > clang-tidy-results.sarif || true
+
+      - name: Upload SARIF to Security tab
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: clang-tidy-results.sarif
+          category: clang-tidy

@@ -1,0 +1,146 @@
+name: libFuzzer Fuzzing
+
+on:
+  push:
+    branches: [ master, main, release ]
+    paths-ignore: ['.github/**']
+  pull_request:
+    branches: [ master, main, release ]
+    paths-ignore: ['.github/**']
+  schedule:
+    - cron: '0 4 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  security-events: write
+  actions: write
+
+concurrency:
+  group: libfuzz-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  fuzz:
+    name: ${{ matrix.mode }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # create = server side request parsing (CreateResponseV4/V6)
+        # decrypt = client side response parsing (DecryptResponseV4/V6)
+        mode: [ create, decrypt ]
+    env:
+      MODE: ${{ matrix.mode }}
+      CFLAGS: -std=gnu11 -O1 -g -DNO_LOG -DNO_VERBOSE_LOG -DNO_EXTERNAL_DATA -DUNSAFE_DATA_LOAD -I../src
+      SAN: -fsanitize=fuzzer,address,undefined -fno-sanitize=shift -fno-sanitize-recover=undefined
+      # gcc build for crash replay: its ASAN/UBSAN runtime prints
+      # symbolizable reports that crashes-to-sarif.py parses (the clang
+      # libFuzzer build traps on UBSAN without a stderr trace).
+      REPLAY_SAN: -fsanitize=address,undefined -fno-sanitize=shift -fno-sanitize-recover=undefined
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install clang
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends clang
+
+      - name: Build seed generator
+        run: |
+          gcc -std=gnu11 -O1 -g -DNO_LOG -DNO_VERBOSE_LOG -DNO_EXTERNAL_DATA -DUNSAFE_DATA_LOAD -I../src \
+            ../src/kms.c ../src/crypto.c ../src/crypto_internal.c ../src/endian.c \
+            ../src/output.c ../src/shared_globals.c ../src/helpers.c ../src/kmsdata.c \
+            make-seeds.c -o make-seeds
+        working-directory: fuzzing
+
+      - name: Generate seed corpus
+        run: |
+          rm -rf seeds && mkdir -p seeds
+          ./make-seeds seeds
+          # Corpus is protocol-shaped per target: requests for the create
+          # parser, responses for the decrypt parser.
+          if [ "$MODE" = "decrypt" ]; then
+            rm -f seeds/req6.bin seeds/req4.bin seeds/zero6.bin
+          else
+            rm -f seeds/resp6.bin seeds/resp4.bin
+          fi
+          ls -1 seeds
+        working-directory: fuzzing
+
+      - name: Build libFuzzer target
+        run: |
+          FUZZDEF="-DFUZZ_$(echo "$MODE" | tr '[:lower:]' '[:upper:]')"
+          SRCS="kms.c crypto.c crypto_internal.c endian.c output.c shared_globals.c helpers.c kmsdata.c"
+          rm -f obj-*.o libfuzzer-harness.o
+          # Every source built with the full $CFLAGS set (matches the AFL
+          # workflow): -DNO_LOG etc. must be applied uniformly or the harness
+          # silently exercises different code paths than the real targets.
+          for src in $SRCS; do clang $CFLAGS $SAN -c ../src/$src -o obj-$src.o || exit 1; done
+          clang $CFLAGS $SAN $FUZZDEF -c libfuzzer-harness.c -o libfuzzer-harness.o || exit 1
+          clang $SAN obj-*.o libfuzzer-harness.o -o harness-$MODE || exit 1
+          file harness-$MODE
+        working-directory: fuzzing
+
+      - name: Smoke test (seed corpus)
+        env:
+          ASAN_OPTIONS: abort_on_error=1:symbolize=1:detect_leaks=0
+        run: |
+          ./harness-$MODE seeds -runs=50 -timeout=10 -rss_limit_mb=2048 -print_final_stats=1 2>&1 | tail -15
+        working-directory: fuzzing
+
+      - name: Fuzz
+        env:
+          FUZZ_SECONDS: ${{ github.event_name == 'schedule' && '600' || '120' }}
+          ASAN_OPTIONS: abort_on_error=1:symbolize=1:detect_leaks=0
+        run: |
+          rm -rf artifacts && mkdir -p artifacts
+          echo "Fuzzing for $FUZZ_SECONDS seconds..."
+          ./harness-$MODE seeds -max_total_time=$FUZZ_SECONDS -timeout=10 -rss_limit_mb=2048 \
+            -artifact_prefix=artifacts/ -print_final_stats=1 2>&1 | tail -30 || true
+          echo "artifact_count=$(ls artifacts 2>/dev/null | wc -l)"
+        working-directory: fuzzing
+
+      - name: Build replay harness (for SARIF)
+        run: |
+          SRCS="kms.c crypto.c crypto_internal.c endian.c output.c shared_globals.c helpers.c kmsdata.c"
+          rm -f obj-*.o
+          for src in $SRCS; do gcc $CFLAGS $REPLAY_SAN -c ../src/$src -o obj-$src.o || exit 1; done
+          gcc $CFLAGS $REPLAY_SAN -c afl-harness.c -o afl-harness.o || exit 1
+          gcc $REPLAY_SAN obj-*.o afl-harness.o -o replay-$MODE || exit 1
+          file replay-$MODE
+        working-directory: fuzzing
+
+      - name: Convert crashes to SARIF
+        if: always()
+        run: |
+          mkdir -p all-crashes
+          cp artifacts/* all-crashes/ 2>/dev/null || true
+          python3 crashes-to-sarif.py \
+            --harness ./replay-$MODE \
+            --mode "$MODE" \
+            --crashes all-crashes \
+            --output ../libfuzzer-results-$MODE.sarif || true
+        working-directory: fuzzing
+
+      - name: Upload SARIF to Security tab
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: libfuzzer-results-${{ matrix.mode }}.sarif
+          category: libfuzzer-${{ matrix.mode }}
+
+      - name: Upload artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: libfuzzer-${{ matrix.mode }}
+          path: fuzzing/artifacts
+          if-no-files-found: ignore
+
+      - name: Fail on findings
+        run: |
+          count=$(ls artifacts 2>/dev/null | wc -l)
+          echo "libFuzzer $MODE target found $count artifact(s) (crash/hang/OOM input)"
+          if [ "$count" != "0" ]; then exit 1; fi
+        working-directory: fuzzing

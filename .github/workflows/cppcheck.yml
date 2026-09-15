@@ -1,0 +1,88 @@
+name: Cppcheck Static Analysis
+
+on:
+  push:
+    branches: [ master, main, release ]
+    paths-ignore: ['.github/**']
+  pull_request:
+    branches: [ master, main, release ]
+    paths-ignore: ['.github/**']
+  schedule:
+    - cron: '0 8 * * 2'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  security-events: write
+
+jobs:
+  cppcheck:
+    name: cppcheck (warning/performance/portability)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install cppcheck
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cppcheck
+
+      - name: Run cppcheck
+        working-directory: src
+        run: |
+          set +e
+          cppcheck --enable=warning,performance,portability --std=c11 \
+            --suppress=missingIncludeSystem --inline-suppr \
+            --suppress=syntaxError:output.c \
+            --suppress=preprocessorErrorDirective \
+            --template='{file}:{line}:{severity}:{message}' \
+            -I . -I ../lib ../lib/*.c *.c > cppcheck-report.txt 2>&1
+          set -e
+          echo "--- warnings ---"
+          grep -E ':(warning|style|performance|portability):' cppcheck-report.txt || true
+          echo "--- errors/critical ---"
+          grep -E ':(error|critical):' cppcheck-report.txt || true
+
+      - name: Gate on NEW error/critical findings
+        working-directory: src
+        run: |
+          errors=$(grep -E ':(error|critical):' cppcheck-report.txt || true)
+          [ -z "$errors" ] && { echo "No error/critical findings."; exit 0; }
+          new=0
+          while IFS= read -r err; do
+            file="${err%%:*}"; rest="${err#*:}"; line="${rest%%:*}"
+            if ! grep -qE "^${file}:${line}:" ../.github/cppcheck-baseline.txt; then
+              echo "NEW FINDING: $err"
+              new=$((new + 1))
+            fi
+          done <<< "$errors"
+          echo "new_error_findings=$new"
+          if [ "$new" != "0" ]; then exit 1; fi
+
+      - name: Generate SARIF report
+        working-directory: src
+        run: |
+          # cppcheck >= 2.9 emits SARIF v2.1.0 with --template=sarif.
+          # Same suppressions as the text run so the Security tab shows the
+          # same finding set as the gating report.
+          cppcheck --enable=warning,performance,portability --std=c11 \
+            --suppress=missingIncludeSystem --inline-suppr \
+            --suppress=syntaxError:output.c \
+            --suppress=preprocessorErrorDirective \
+            --template=sarif \
+            -I . -I ../lib ../lib/*.c *.c \
+            --output-file=cppcheck-results.sarif 2>/dev/null || true
+
+      - name: Upload SARIF to Security tab
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: src/cppcheck-results.sarif
+          category: cppcheck
+
+      - name: Upload report
+        uses: actions/upload-artifact@v4
+        with:
+          name: cppcheck-report
+          path: src/cppcheck-report.txt
+          if-no-files-found: warn
