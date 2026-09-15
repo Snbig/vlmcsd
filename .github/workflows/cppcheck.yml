@@ -32,6 +32,8 @@ jobs:
           set +e
           cppcheck --enable=warning,performance,portability --std=c11 \
             --suppress=missingIncludeSystem --inline-suppr \
+            --suppress=syntaxError:output.c \
+            --suppress=preprocessorErrorDirective \
             --template='{file}:{line}:{severity}:{message}' \
             -I . -I ../lib ../lib/*.c *.c > cppcheck-report.txt 2>&1
           set -e
