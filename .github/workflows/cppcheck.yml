@@ -62,16 +62,20 @@ jobs:
       - name: Generate SARIF report
         working-directory: src
         run: |
-          # cppcheck >= 2.9 emits SARIF v2.1.0 with --output-format=sarif.
-          # Same suppressions as the text run so the Security tab shows the
-          # same finding set as the gating report.
+          # cppcheck's native SARIF output (--output-format=sarif) needs
+          # >= 2.14, but Ubuntu 24.04 ships 2.13. XML output is stable across
+          # all versions, so emit XML and convert it to SARIF with the bundled
+          # script. Same suppressions as the text run so the Security tab shows
+          # the same finding set as the gating report.
           cppcheck --enable=warning,performance,portability --std=c11 \
             --suppress=missingIncludeSystem --inline-suppr \
             --suppress=syntaxError:output.c \
             --suppress=preprocessorErrorDirective \
-            --output-format=sarif \
+            --xml --xml-version=2 \
             -I . -I ../lib ../lib/*.c *.c \
-            --output-file=cppcheck-results.sarif 2>/dev/null || true
+            --output-file=cppcheck-results.xml 2>/dev/null || true
+          python3 ../.github/scripts/cppcheck-to-sarif.py \
+            cppcheck-results.xml cppcheck-results.sarif
 
       - name: Upload SARIF to Security tab
         if: always()
