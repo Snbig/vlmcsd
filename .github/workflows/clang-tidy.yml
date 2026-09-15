@@ -59,7 +59,7 @@ jobs:
           # the compilation database when no source files are given.
           clang-tidy -p src \
             -checks='-*,clang-analyzer-*,bugprone-*,cert-*,security-*,performance-*,portability-*' \
-            $(jq -r '.[].file | select(test("\\.c$"))' src/compile_commands.json) \
+            $(jq -r '.[].file | select(endswith(".c"))' src/compile_commands.json) \
             > clang-tidy-output.txt 2>&1 || true
           python3 .github/scripts/clang-tidy-to-sarif.py \
             clang-tidy-output.txt clang-tidy-results.sarif
