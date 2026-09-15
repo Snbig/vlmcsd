@@ -166,11 +166,11 @@ BOOL ucs2_to_utf8(const WCHAR* const ucs2_le, char* utf8, size_t maxucs2, size_t
 
 	for (*utf8 = 0; *current_ucs2; current_ucs2++)
 	{
-		if (current_ucs2 - ucs2_le > (intptr_t)maxucs2) return FALSE;
+		if (current_ucs2 - ucs2_le >= (intptr_t)maxucs2) return FALSE;
 		int len = ucs2_to_utf8_char(*current_ucs2, utf8_char);
-		if (index_utf8 + len > maxutf8) return FALSE;
-		strncat(utf8, utf8_char, len);
-		index_utf8 += len;
+		if (len <= 0 || index_utf8 + (size_t)len + 1 > maxutf8) return FALSE;
+		strncat(utf8, utf8_char, (size_t)len);
+		index_utf8 += (size_t)len;
 	}
 
 	return TRUE;

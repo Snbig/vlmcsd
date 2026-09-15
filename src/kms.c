@@ -972,6 +972,7 @@ static uint8_t checkPidLength(const RESPONSE *const responseBase)
 	unsigned int i;
 
 	if (LE32(responseBase->PIDSize) > (PID_BUFFER_SIZE << 1)) return FALSE;
+	if (LE32(responseBase->PIDSize) < 2) return FALSE;
 	if (responseBase->KmsPID[(LE32(responseBase->PIDSize) >> 1) - 1]) return FALSE;
 
 	for (i = 0; i < (LE32(responseBase->PIDSize) >> 1) - 2; i++)
