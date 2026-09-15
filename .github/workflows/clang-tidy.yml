@@ -55,8 +55,11 @@ jobs:
           # clang-tidy has no native SARIF output and the clang-tidy-sarif
           # PyPI package does not exist, so parse the stable text format with
           # the bundled converter. Same check groups as the cpp-linter step.
+          # Files must be passed explicitly: clang-tidy does not auto-analyze
+          # the compilation database when no source files are given.
           clang-tidy -p src \
             -checks='-*,clang-analyzer-*,bugprone-*,cert-*,security-*,performance-*,portability-*' \
+            $(jq -r '.[].file | select(test("\\.c$"))' src/compile_commands.json) \
             > clang-tidy-output.txt 2>&1 || true
           python3 .github/scripts/clang-tidy-to-sarif.py \
             clang-tidy-output.txt clang-tidy-results.sarif
