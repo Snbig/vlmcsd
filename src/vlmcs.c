@@ -1081,6 +1081,7 @@ static void updateIniFile(char*** restrict lines)
 
 	if (!iniFileExistedBefore) vlmcsd_unlink(fn_bak);
 
+	free(lineWritten);
 	free(fn_bak);
 }
 
