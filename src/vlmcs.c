@@ -1073,6 +1073,8 @@ static void updateIniFile(char*** restrict lines)
 	if (fclose(out))
 	{
 		const int error = errno;
+		free(lineWritten);
+		free(fn_bak);
 		errorout("Fatal: Cannot write to %s: %s\n", fn_ini_client, strerror(error));
 		exit(error);
 	}

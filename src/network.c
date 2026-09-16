@@ -250,6 +250,12 @@ SOCKET connectToAddress(const char *const addr, const int AddressFamily, int_fas
 
 		s = socket(sa->ai_family, SOCK_STREAM, IPPROTO_TCP);
 
+		if (s == INVALID_SOCKET)
+		{
+			printerrorf("%s: %s\n", szAddr, vlmcsd_strerror(socket_errno));
+			continue;
+		}
+
 #		if !defined(NO_TIMEOUT) && !__minix__
 #		ifndef _WIN32 // Standard Posix timeout structure
 
