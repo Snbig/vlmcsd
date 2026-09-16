@@ -712,7 +712,8 @@ static HRESULT __stdcall CreateResponseBaseCallback(REQUEST* baseRequest, RESPON
 			if (i >= ClientLists[appIndex].MaxCount)
 			{
 				memcpy(&ClientLists[appIndex].Guid[ClientLists[appIndex].CurrentPosition], &baseRequest->CMID, sizeof(GUID));
-				ClientLists[appIndex].CurrentPosition = (ClientLists[appIndex].CurrentPosition + 1) % (ClientLists[appIndex].MaxCount > MAX_CLIENTS ? MAX_CLIENTS : ClientLists[appIndex].MaxCount);
+				const int_fast16_t maxCount = ClientLists[appIndex].MaxCount > MAX_CLIENTS ? MAX_CLIENTS : ClientLists[appIndex].MaxCount;
+				ClientLists[appIndex].CurrentPosition = (ClientLists[appIndex].CurrentPosition + 1) % (maxCount ? maxCount : 1);
 				baseResponse->Count = LE32(ClientLists[appIndex].CurrentCount);
 			}
 		}

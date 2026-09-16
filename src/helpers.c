@@ -616,7 +616,7 @@ void loadKmsData()
 #	endif // NO_EXTERNAL_DATA
 
 #	ifndef UNSAFE_DATA_LOAD
-	if (((BYTE*)KmsData)[size - 1] != 0) dataFileFormatError();
+	if (size < (long)sizeof(VlmcsdHeader_t) || ((BYTE*)KmsData)[size - 1] != 0) dataFileFormatError();
 #	endif // UNSAFE_DATA_LOAD
 
 	KmsData->MajorVer = LE16(KmsData->MajorVer);
