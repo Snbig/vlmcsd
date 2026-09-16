@@ -184,7 +184,9 @@ static VOID ServiceInstaller(const char *restrict ServiceUser, const char *const
 		return;
 	}
 
-	strcat(szPath, "\"");
+	// Compute the total length of the command line first so we can allocate
+	// a buffer that fits exactly instead of overflowing the fixed szPath.
+	size_t cmdLineLength = strlen(szPath) + 1; // module path + closing quote
 
 	int i;
 	for (i = 1; i < global_argc; i++)
@@ -199,16 +201,37 @@ static VOID ServiceInstaller(const char *restrict ServiceUser, const char *const
 			continue;
 		}
 
-		strcat(szPath, " ");
+		cmdLineLength += 1 + strlen(global_argv[i]); // space + argument
+
+		if (strchr(global_argv[i], ' ')) cmdLineLength += 2; // surrounding quotes
+	}
+
+	char* cmdLine = (char*)vlmcsd_malloc(cmdLineLength + 1);
+	strcpy(cmdLine, szPath);
+	strcat(cmdLine, "\"");
+
+	for (i = 1; i < global_argc; i++)
+	{
+		// Strip unneccessary parameters, especially the password
+		if (!strcmp(global_argv[i], "-s")) continue;
+
+		if (!strcmp(global_argv[i], "-W") ||
+			!strcmp(global_argv[i], "-U"))
+		{
+			i++;
+			continue;
+		}
+
+		strcat(cmdLine, " ");
 
 		if (strchr(global_argv[i], ' '))
 		{
-			strcat(szPath, "\"");
-			strcat(szPath, global_argv[i]);
-			strcat(szPath, "\"");
+			strcat(cmdLine, "\"");
+			strcat(cmdLine, global_argv[i]);
+			strcat(cmdLine, "\"");
 		}
 		else
-			strcat(szPath, global_argv[i]);
+			strcat(cmdLine, global_argv[i]);
 	}
 
 	// Get a handle to the SCM database.
@@ -219,6 +242,7 @@ static VOID ServiceInstaller(const char *restrict ServiceUser, const char *const
 	if (!OpenAndRemoveService(&dwPreviousState, &schSCManager))
 	{
 		errorout("Service removal failed (%d)\n", (uint32_t)GetLastError());
+		free(cmdLine);
 		return;
 	}
 
@@ -248,12 +272,14 @@ static VOID ServiceInstaller(const char *restrict ServiceUser, const char *const
 		SERVICE_WIN32_OWN_PROCESS,	// service type
 		SERVICE_AUTO_START,			// start type
 		SERVICE_ERROR_NORMAL,		// error control type
-		szPath,						// path to service's binary
+		cmdLine,					// path to service's binary
 		NULL,						// no load ordering group
 		NULL,						// no tag identifier
 		"tcpip\0",			        // depends on TCP/IP
 		ServiceUser,				// LocalSystem account
 		ServicePassword);			// no password
+
+	free(cmdLine);
 
 #	if __clang__ && (__CYGWIN__ || __MINGW64__ )
 	// Workaround for clang not understanding some GCC asm syntax used in <w32api/psdk_inc/intrin-impl.h>
